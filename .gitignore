@@ -1,0 +1,23 @@
+plan/
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+dist/
+build/
+*.egg-info/
+
+# local tool state and secrets
+.codex/
+.claude/
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+.DS_Store
