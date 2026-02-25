@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling>=1.24.2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "autocoder"
+version = "0.1.0"
+description = "local per-repo GitHub + Codex orchestrator"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[project.scripts]
+autocoder = "autocoder.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autocoder"]
+
