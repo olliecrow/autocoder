@@ -33,6 +33,8 @@ This document captures the current intended behavior of autocoder (the tool) at 
 - **instance id**: autocoder uses a local-only opaque UUID stored under `~/autocoder/instance_id` for claim comments/log correlation.
 - **attachment size cap**: cap downloaded attachments at 200MB per issue (local-only); exceed => skip download and ask the human for an alternative.
 - **start command**: autocoder is started with `autocoder run <repo-ssh-url>` (no extra required flags).
+- **doctor helper command**: `autocoder doctor <repo-ssh-url>` runs non-mutating preflight checks for local tools, auth state, and remote reachability.
+- **dry-run helper command**: `autocoder dry-run <repo-ssh-url>` prints the planned execution order and paths without mutating state.
 - **label removal cleanup**: when `autocoder` is removed from an issue, autocoder stops and cleans up local state (delete local worktree/branch/artifacts). It should also remove lock labels (`autocoder:claimed`, `autocoder:needs-info`) best-effort. It must not close PRs, close issues, or delete remote branches.
 
 ## Definitions

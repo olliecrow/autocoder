@@ -231,3 +231,16 @@ Enforcement:
 Spec requires conservative merge handling, careful conflict resolution, and relevant post-merge checks before pushing merge results.
 References:
 `docs/spec.md`, `src/autocoder/run.py`
+
+Decision:
+Expose explicit `doctor` and `dry-run` helper commands for setup validation and execution preview.
+Context:
+Operators need a fast way to validate auth and tooling, and to preview the run order before starting long polling sessions.
+Rationale:
+Dedicated non-mutating helpers reduce onboarding friction and make failures easier to diagnose without starting the main loop.
+Trade-offs:
+Slightly larger CLI surface area to maintain and document.
+Enforcement:
+CLI command parser includes `doctor` and `dry-run`; preflight checks run with pass/fail output; dry-run prints deterministic stage order and confirms no mutation.
+References:
+`src/autocoder/cli.py`, `src/autocoder/preflight.py`, `tests/test_cli.py`, `tests/test_preflight.py`, `docs/spec.md`
