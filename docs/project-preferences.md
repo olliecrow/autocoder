@@ -23,6 +23,7 @@ These preferences define how `autocoder` should be maintained as an open-source-
 ## Verification Expectations
 
 - Run relevant tests/checks before merge.
+- Run `autocoder doctor <repo-ssh-url>` and `autocoder dry-run <repo-ssh-url>` before long polling sessions.
 - Record verification evidence in PRs/issues when practical.
 
 ## Collaboration Preferences
