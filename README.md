@@ -38,11 +38,20 @@ uv sync
 uv run python -m autocoder run git@github.com:OWNER/REPO.git
 ```
 
+4. Optional quick checks before running.
+
+```bash
+uv run python -m autocoder doctor git@github.com:OWNER/REPO.git
+uv run python -m autocoder dry-run git@github.com:OWNER/REPO.git
+```
+
 Alternative entrypoints.
 
 ```bash
 python -m autocoder run git@github.com:OWNER/REPO.git
 autocoder run git@github.com:OWNER/REPO.git
+autocoder doctor git@github.com:OWNER/REPO.git
+autocoder dry-run git@github.com:OWNER/REPO.git
 ```
 
 ## Requirements
@@ -66,6 +75,38 @@ autocoder does not run its own OAuth flow.
 
 - Set `AUTOCODER_LOG_LEVEL=debug` when you need verbose diagnostics.
 - autocoder keeps a per-repo lock, so you do not get two runs on the same repo at once.
+
+## Short example output
+
+Doctor:
+
+```text
+autocoder doctor
+repo: owner/repo
+
+[ok] tool available: git
+[ok] tool available: gh
+[ok] tool available: codex
+[ok] gh auth status
+[ok] codex login status
+[ok] remote repository reachable
+
+doctor result: PASS
+```
+
+Dry run:
+
+```text
+autocoder dry-run
+repo: owner/repo
+
+planned order:
+1. parse repo and load config
+2. acquire lock
+3. sync managed clone
+4. discover defaults and labels
+5. start polling loop
+```
 
 ## Local state and directory layout
 
