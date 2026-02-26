@@ -1,101 +1,87 @@
 # autocoder
 
-autocoder is a local orchestrator that turns GitHub Issues into implemented Pull Requests by running Codex CLI against one target repository at a time.
+autocoder runs an issue to pull request loop for one GitHub repository at a time.
+You add a label, it works in isolated worktrees, and it reports status back to GitHub.
 
-## Project Aim
+## What this project is trying to achieve
 
-Provide a reliable issue-driven automation loop for one repository:
+Give teams a simple and reliable way to automate issue handling while keeping humans in charge of review and merge.
 
-- humans manage work in GitHub issues and PRs
-- autocoder claims opted-in issues and runs implementation locally
-- autocoder opens or updates PRs with verification evidence
-- humans review and merge
+## What you experience as a user
 
-## What autocoder Does
+1. You add the `autocoder` label to an issue.
+2. autocoder claims the issue and starts work in an isolated worktree.
+3. It runs Codex to implement and verify the requested change.
+4. It pushes a branch and opens or updates a pull request.
+5. It posts progress and outcomes in the issue and pull request.
+6. You review and merge when ready.
+7. To stop work, remove the `autocoder` label.
 
-- watches for opted-in issues (`autocoder` label)
-- claims work with explicit lock labels/comments
-- prepares isolated per-issue worktrees and branches
-- runs Codex non-interactively for implementation and verification
-- pushes issue branches and creates/updates PRs
-- reports status back to issue/PR threads
-- cleans up local state after completion
+## Quick start
 
-## Requirements
-
-- Python `3.11+`
-- `git`
-- GitHub CLI (`gh`) authenticated for the target repo
-- Codex CLI installed and authenticated
-- SSH access to target repositories (`git@github.com:OWNER/REPO.git`)
-
-## Authentication
-
-autocoder reuses your local authenticated sessions:
-
-- GitHub auth from `gh auth login`
-- Codex auth from your local Codex CLI setup
-
-autocoder does not run an OAuth flow itself.
-
-## Quick Start
-
-1. Authenticate local tools:
+1. Authenticate local tools.
 
 ```bash
 gh auth login
 gh auth status
 ```
 
-2. Install dependencies:
+2. Install dependencies.
 
 ```bash
 uv sync
 ```
 
-3. Run autocoder for one repository:
+3. Run autocoder for one repository.
 
 ```bash
 uv run python -m autocoder run git@github.com:OWNER/REPO.git
 ```
 
-Alternative entrypoints:
+Alternative entrypoints.
 
 ```bash
 python -m autocoder run git@github.com:OWNER/REPO.git
 autocoder run git@github.com:OWNER/REPO.git
 ```
 
-## Getting Started Workflow
+## Requirements
 
-1. Add label `autocoder` to an issue authored by an allowed user.
-2. autocoder claims the issue and creates/resumes an issue worktree.
-3. autocoder runs Codex to implement and validate the requested change.
-4. autocoder pushes branch updates and opens/updates the PR.
-5. Human reviews and merges the PR.
-6. To stop work, remove label `autocoder`.
+- Python `3.11+`
+- `git`
+- GitHub CLI `gh`, authenticated for the target repo
+- Codex CLI, installed and authenticated
+- SSH access to target repositories, for example `git@github.com:OWNER/REPO.git`
 
-## Local State and Directory Layout
+## Authentication
 
-autocoder keeps all managed runtime state under `~/autocoder/`:
+autocoder reuses your local authenticated sessions.
+
+- GitHub auth from `gh auth login`
+- Codex auth from your local Codex CLI setup
+
+autocoder does not run its own OAuth flow.
+
+## Helpful tips
+
+- Set `AUTOCODER_LOG_LEVEL=debug` when you need verbose diagnostics.
+- autocoder keeps a per-repo lock, so you do not get two runs on the same repo at once.
+
+## Local state and directory layout
+
+autocoder keeps managed runtime state under `~/autocoder/`.
 
 - managed clone: `~/autocoder/repos/<owner>/<repo>/repo`
 - per-issue worktrees: `~/autocoder/repos/<owner>/<repo>/worktrees/issue-<n>`
 - runtime state: `~/autocoder/repos/<owner>/<repo>/state`
 - per-repo config: `~/autocoder/repos/<owner>/<repo>/config.toml`
-- local issue artifacts: `.autocoder/` inside issue worktrees (gitignored)
+- local issue artifacts: `.autocoder/` inside issue worktrees, gitignored
 
-## Logging and Debugging
+## Documentation map
 
-- logs are emitted to stderr with timestamps and issue/repo context
-- set `AUTOCODER_LOG_LEVEL=debug` for verbose diagnostics
-- a per-repo session lock prevents concurrent autocoder instances on the same repo
-
-## Documentation Map
-
-- `README.md`: human-facing overview and operator quickstart
-- `AGENTS.md`: contributor/agent operating guidelines
-- `docs/spec.md`: canonical behavior and runtime/security contracts
-- `docs/workflows.md`: execution and note-routing conventions
+- `README.md`: human-facing overview and quick start
+- `AGENTS.md`: contributor and agent operating guidelines
+- `docs/spec.md`: canonical behavior and runtime security contracts
+- `docs/workflows.md`: execution and note routing conventions
 - `docs/decisions.md`: durable rationale and decision log
 - `docs/project-preferences.md`: durable project maintenance preferences
