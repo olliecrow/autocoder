@@ -179,6 +179,7 @@ Invariant:
 - one issue -> one branch -> one PR.
 
 If an issue already has an open PR at the moment it is labeled `autocoder`, autocoder should resume that PR rather than creating a second one (when it is safe to adopt: same-repo PR, allowlisted PR author, and `pr.author == issue.author`).
+Adoption discovery should prioritize GitHub's linked-closing relationship (`closingIssuesReferences`) so autocoder can resume valid existing PRs even when branch names differ or PR body text does not use an exact `Fixes #<n>` phrase.
 
 Branch ownership and safety:
 - prefer branches matching `autocoder/issue-<n>-*`.

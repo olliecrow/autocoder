@@ -167,6 +167,9 @@ class _GhAdoptStub:
     def list_prs(self, *, state: str = "open", head: str | None = None, limit: int = 50):  # type: ignore[no-untyped-def]
         raise AssertionError("unexpected list_prs in this test")
 
+    def list_open_prs_closing_issue(self, *, issue_number: int, limit: int = 100):  # type: ignore[no-untyped-def]
+        raise AssertionError("unexpected list_open_prs_closing_issue in this test")
+
     def search_open_prs_by_body_snippet(self, *, query: str, limit: int = 50):  # type: ignore[no-untyped-def]
         raise AssertionError("unexpected search_open_prs_by_body_snippet in this test")
 
@@ -259,6 +262,58 @@ def test_find_or_adopt_pr_rejects_pr_author_mismatch_with_issue_author() -> None
     assert issue_state.pr is None
     assert len(gh.issue_comments) == 1
     assert "does not match issue author" in gh.issue_comments[0][1]
+
+
+def test_find_or_adopt_pr_adopts_single_linked_open_pr() -> None:
+    linked = PullRequestDetail(
+        number=321,
+        title="linked",
+        url="https://example.test/pr/321",
+        state="OPEN",
+        updated_at="2026-02-13T00:00:00Z",
+        author="olliecrow",
+        head_ref_name="user/existing-branch",
+        base_ref_name="main",
+        is_cross_repository=False,
+        merged_at=None,
+        body="",
+        comments=(),
+        reviews=(),
+    )
+
+    class _GhLinkedStub:
+        def __init__(self) -> None:
+            self.issue_comments: list[tuple[int, str]] = []
+
+        def list_prs(self, *, state: str = "open", head: str | None = None, limit: int = 50):  # type: ignore[no-untyped-def]
+            return []
+
+        def list_open_prs_closing_issue(self, *, issue_number: int, limit: int = 100):  # type: ignore[no-untyped-def]
+            assert issue_number == 1
+            return [linked]
+
+        def view_pr(self, *, number: int, include_comments: bool = False) -> PullRequestDetail:
+            assert number == 321
+            assert include_comments is False
+            return linked
+
+        def search_open_prs_by_body_snippet(self, *, query: str, limit: int = 50):  # type: ignore[no-untyped-def]
+            raise AssertionError("unexpected search_open_prs_by_body_snippet in this test")
+
+        def issue_comment(self, *, number: int, body: str) -> None:
+            self.issue_comments.append((number, body))
+
+    gh = _GhLinkedStub()
+    rt = SimpleNamespace(gh=gh)
+    issue_state = IssueState(branch="autocoder/issue-1-test", pr=None)
+
+    adopted = _find_or_adopt_pr(rt=rt, issue_state=issue_state, issue_number=1, issue_author="olliecrow")
+
+    assert adopted is not None
+    assert adopted.number == 321
+    assert issue_state.pr == 321
+    assert issue_state.branch == "user/existing-branch"
+    assert gh.issue_comments == []
 
 
 def test_issue_author_attachment_urls_filters_to_issue_author_only() -> None:

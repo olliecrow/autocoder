@@ -305,6 +305,38 @@ class GhClient:
             )
         return prs
 
+    def list_open_prs_closing_issue(self, *, issue_number: int, limit: int = 100) -> list[PullRequestSummary]:
+        payload = self._gh_json(
+            [
+                "pr",
+                "list",
+                "--state",
+                "open",
+                "--limit",
+                str(limit),
+                "--json",
+                "number,title,url,state,updatedAt,headRefName,baseRefName,closingIssuesReferences",
+            ]
+        )
+        prs: list[PullRequestSummary] = []
+        for it in payload:
+            refs = it.get("closingIssuesReferences") or []
+            closes_target = any((ref or {}).get("number") == issue_number for ref in refs)
+            if not closes_target:
+                continue
+            prs.append(
+                PullRequestSummary(
+                    number=it["number"],
+                    title=it["title"],
+                    url=it["url"],
+                    state=it["state"],
+                    updated_at=it["updatedAt"],
+                    head_ref_name=it["headRefName"],
+                    base_ref_name=it["baseRefName"],
+                )
+            )
+        return prs
+
     def view_pr(self, *, number: int, include_comments: bool = True) -> PullRequestDetail:
         return self._view_pr(number=number, include_comments=include_comments)
 

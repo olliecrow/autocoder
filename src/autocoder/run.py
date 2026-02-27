@@ -749,7 +749,55 @@ def _find_or_adopt_pr(
         )
         return None
 
-    # Fallback: adopt an existing open PR that references the issue via `Fixes #<n>`.
+    # Fallback 1: adopt an existing open PR that GitHub links as closing this issue.
+    linked = rt.gh.list_open_prs_closing_issue(issue_number=issue_number, limit=100)
+    if len(linked) == 1:
+        pr = rt.gh.view_pr(number=linked[0].number, include_comments=False)
+        if pr.is_cross_repository:
+            _reject_pr(
+                pr=pr,
+                why=(
+                    f"found existing PR #{pr.number} linked to issue #{issue_number}, but it appears to be "
+                    "cross-repository (for example from a fork). autocoder will not adopt or mutate it; please "
+                    "create a PR from a branch on the base repo."
+                ),
+            )
+            return None
+        if not is_allowed_login(pr.author):
+            _reject_pr(
+                pr=pr,
+                why=(
+                    f"found existing PR #{pr.number} linked to issue #{issue_number}, but PR author "
+                    f"`{pr.author or '(unknown)'}` is not allowlisted. autocoder will not adopt or mutate it; "
+                    "please close it and let autocoder open its own PR (or remove the `autocoder` label)."
+                ),
+            )
+            return None
+        if not _pr_author_matches_issue_author(pr_author=pr.author, issue_author=issue_author):
+            _reject_pr(
+                pr=pr,
+                why=(
+                    f"found existing PR #{pr.number} linked to issue #{issue_number}, but PR author "
+                    f"`{pr.author or '(unknown)'}` does not match issue author `{issue_author or '(unknown)'}`. "
+                    "autocoder will not adopt or mutate it; please use a PR opened by the issue author."
+                ),
+            )
+            return None
+        issue_state.pr = pr.number
+        if pr.head_ref_name and pr.head_ref_name != issue_state.branch:
+            issue_state.branch = pr.head_ref_name
+        return pr
+    if len(linked) > 1:
+        rt.gh.issue_comment(
+            number=issue_number,
+            body=_wrap_comment(
+                f"multiple open PRs are linked to issue #{issue_number}; please confirm which PR autocoder should use.",
+                redactions=[str(Path.home())],
+            ),
+        )
+        return None
+
+    # Fallback 2: adopt an existing open PR that references the issue via `Fixes #<n>`.
     snippet = f"Fixes #{issue_number}"
     found = rt.gh.search_open_prs_by_body_snippet(query=snippet, limit=5)
     if len(found) == 1:

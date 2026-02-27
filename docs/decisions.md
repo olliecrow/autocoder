@@ -246,6 +246,19 @@ References:
 `src/autocoder/cli.py`, `src/autocoder/preflight.py`, `tests/test_cli.py`, `tests/test_preflight.py`, `docs/spec.md`
 
 Decision:
+Prefer linked-issue PR adoption (`closingIssuesReferences`) before body-snippet heuristics when resuming existing open PRs for an issue.
+Context:
+Issue-to-PR adoption previously relied on branch-name matching and a fallback body search for exact `Fixes #<n>` text. Valid existing PRs can still be linked to an issue without matching either heuristic.
+Rationale:
+Using GitHub's explicit linked-closing relationship makes adoption more accurate and preserves the one-issue/one-PR invariant by reducing duplicate PR creation.
+Trade-offs:
+Requires one extra open-PR listing call with linked-issue metadata and still needs ambiguity handling when multiple linked PRs are present.
+Enforcement:
+PR adoption now checks a dedicated linked-issue query first and only falls back to body-snippet search if no linked PR is found; tests cover both linked filtering and successful adoption flow.
+References:
+`src/autocoder/gh.py`, `src/autocoder/run.py`, `tests/test_gh.py`, `tests/test_run_pr_flow.py`, `docs/spec.md`
+
+Decision:
 Ship a first-class completion command and richer CLI help examples.
 Context:
 Operators rely on command-line usage for setup and troubleshooting; missing completion and thin help text slow onboarding.

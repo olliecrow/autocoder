@@ -43,6 +43,30 @@ class _RecordingRunner(Runner):
                 "body": "b",
             }
             return CmdResult(args=argv, returncode=0, stdout=json.dumps(payload), stderr="")
+        if argv[:3] == ["gh", "pr", "list"] and "closingIssuesReferences" in " ".join(argv):
+            payload = [
+                {
+                    "number": 111,
+                    "title": "a",
+                    "url": "https://example.test/pr/111",
+                    "state": "OPEN",
+                    "updatedAt": "2026-02-13T00:00:00Z",
+                    "headRefName": "branch-a",
+                    "baseRefName": "main",
+                    "closingIssuesReferences": [{"number": 7}],
+                },
+                {
+                    "number": 222,
+                    "title": "b",
+                    "url": "https://example.test/pr/222",
+                    "state": "OPEN",
+                    "updatedAt": "2026-02-13T00:00:00Z",
+                    "headRefName": "branch-b",
+                    "baseRefName": "main",
+                    "closingIssuesReferences": [{"number": 9}],
+                },
+            ]
+            return CmdResult(args=argv, returncode=0, stdout=json.dumps(payload), stderr="")
 
         return CmdResult(args=argv, returncode=0, stdout="", stderr="")
 
@@ -121,3 +145,17 @@ def test_edit_pr_uses_body_file_stdin_when_body_is_set() -> None:
     assert "--title" in argv
     assert "--body-file" in argv
     assert input_text == body
+
+
+def test_list_open_prs_closing_issue_filters_by_issue_number() -> None:
+    runner = _RecordingRunner()
+    gh = GhClient(runner=runner, repo="owner/repo")
+
+    prs = gh.list_open_prs_closing_issue(issue_number=7, limit=50)
+
+    assert len(prs) == 1
+    assert prs[0].number == 111
+    argv, _input_text = runner.calls[0]
+    assert argv[:3] == ["gh", "pr", "list"]
+    assert "--json" in argv
+    assert "closingIssuesReferences" in argv[argv.index("--json") + 1]

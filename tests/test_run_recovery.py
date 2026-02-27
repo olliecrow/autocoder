@@ -56,6 +56,9 @@ class _GhStub:
     def list_prs(self, *, state: str = "all", head: str | None = None, limit: int = 5):  # type: ignore[no-untyped-def]
         return []
 
+    def list_open_prs_closing_issue(self, *, issue_number: int, limit: int = 100):  # type: ignore[no-untyped-def]
+        return []
+
     def search_open_prs_by_body_snippet(self, *, query: str, limit: int = 5):  # type: ignore[no-untyped-def]
         return []
 
@@ -387,6 +390,9 @@ def test_run_one_iteration_retries_when_issue_author_comment_arrives_during_code
             return issue_after if self._use_after else issue_before
 
         def list_prs(self, *, state: str = "all", head: str | None = None, limit: int = 5):  # type: ignore[no-untyped-def]
+            return []
+
+        def list_open_prs_closing_issue(self, *, issue_number: int, limit: int = 100):  # type: ignore[no-untyped-def]
             return []
 
         def search_open_prs_by_body_snippet(self, *, query: str, limit: int = 5):  # type: ignore[no-untyped-def]
