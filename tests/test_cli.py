@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from autocoder import cli
 
 
@@ -43,3 +45,17 @@ def test_cli_dry_run_routes_to_run_dry_run(monkeypatch) -> None:
     rc = cli.main(["dry-run", "git@github.com:owner/repo.git"])
     assert rc == 29
     assert called["repo"] == "git@github.com:owner/repo.git"
+
+
+@pytest.mark.parametrize("shell", ["bash", "zsh"])
+def test_cli_completion_prints_script(shell: str, capsys: pytest.CaptureFixture[str]) -> None:
+    rc = cli.main(["completion", shell])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "autocoder" in out
+
+
+def test_parser_help_mentions_completion_install() -> None:
+    help_text = cli._build_parser().format_help()
+    assert "completion" in help_text
+    assert "autocoder completion zsh" in help_text

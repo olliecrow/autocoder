@@ -54,6 +54,24 @@ autocoder doctor git@github.com:OWNER/REPO.git
 autocoder dry-run git@github.com:OWNER/REPO.git
 ```
 
+Show command help.
+
+```bash
+autocoder --help
+autocoder run --help
+```
+
+Optional tab completion setup.
+
+```bash
+# bash
+autocoder completion bash > ~/.local/share/bash-completion/completions/autocoder
+
+# zsh
+mkdir -p ~/.zsh/completions
+autocoder completion zsh > ~/.zsh/completions/_autocoder
+```
+
 ## Requirements
 
 - Python `3.11+`
@@ -75,6 +93,12 @@ autocoder does not run its own OAuth flow.
 
 - Set `AUTOCODER_LOG_LEVEL=debug` when you need verbose diagnostics.
 - autocoder keeps a per-repo lock, so you do not get two runs on the same repo at once.
+
+## Known limitations
+
+- One autocoder process manages one repository at a time.
+- It depends on local `gh` and `codex` authentication sessions.
+- It requires SSH clone access to target repositories.
 
 ## Short example output
 

@@ -244,3 +244,16 @@ Enforcement:
 CLI command parser includes `doctor` and `dry-run`; preflight checks run with pass/fail output; dry-run prints deterministic stage order and confirms no mutation.
 References:
 `src/autocoder/cli.py`, `src/autocoder/preflight.py`, `tests/test_cli.py`, `tests/test_preflight.py`, `docs/spec.md`
+
+Decision:
+Ship a first-class completion command and richer CLI help examples.
+Context:
+Operators rely on command-line usage for setup and troubleshooting; missing completion and thin help text slow onboarding.
+Rationale:
+`autocoder completion [bash|zsh]` plus explicit examples in `--help` makes common command flows easier to discover and reduces typing errors.
+Trade-offs:
+Adds a small maintenance surface for static shell completion templates.
+Enforcement:
+CLI includes `completion` subcommand, root help includes install examples, and tests cover completion output plus help text references.
+References:
+`src/autocoder/cli.py`, `tests/test_cli.py`, `README.md`
