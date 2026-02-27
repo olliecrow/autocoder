@@ -1,0 +1,90 @@
+name: Security Policy Checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  security-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          version="8.30.0"
+          archive="gitleaks_${version}_linux_x64.tar.gz"
+          base_url="https://github.com/gitleaks/gitleaks/releases/download/v${version}"
+          curl -sSfL -o "${archive}" "${base_url}/${archive}"
+          curl -sSfL -o checksums.txt "${base_url}/gitleaks_${version}_checksums.txt"
+          grep "${archive}" checksums.txt | sha256sum -c -
+          tar -xzf "${archive}"
+          install -m 0755 gitleaks "$RUNNER_TEMP/gitleaks"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Scan git history with gitleaks
+        run: |
+          set -euo pipefail
+          gitleaks git --redact --verbose --config .gitleaks.toml --log-opts="--all"
+
+      - name: Self-test sensitive text policy patterns
+        run: |
+          set -euo pipefail
+          tmp_ok="$(mktemp)"
+          tmp_bad="$(mktemp)"
+          printf 'docs: keep /Users/YOU as placeholder only\n' > "${tmp_ok}"
+          printf 'fix: %s=%s\n' "token" "abc123456789XYZ" > "${tmp_bad}"
+          bash scripts/security/check-sensitive-text.sh --context=policy-selftest "${tmp_ok}"
+          if bash scripts/security/check-sensitive-text.sh --context=policy-selftest "${tmp_bad}"; then
+            echo "expected policy self-test failure did not occur" >&2
+            exit 1
+          fi
+
+      - name: Self-test sensitive text policy without ripgrep
+        run: |
+          set -euo pipefail
+          tmp_bad="$(mktemp)"
+          printf 'fix: %s=%s\n' "token" "abc123456789XYZ" > "${tmp_bad}"
+          if PATH="/usr/bin:/bin" bash scripts/security/check-sensitive-text.sh --context=policy-fallback-selftest "${tmp_bad}"; then
+            echo "expected fallback policy self-test failure did not occur" >&2
+            exit 1
+          fi
+
+      - name: Check commit messages for policy violations
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            range="${PR_BASE_SHA}..${PR_HEAD_SHA}"
+          elif [[ "${PUSH_BEFORE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
+            range="${GITHUB_SHA}^!"
+          else
+            range="${PUSH_BEFORE_SHA}..${GITHUB_SHA}"
+          fi
+
+          temp_file="$(mktemp)"
+          git log --format='%H%n%s%n%b%n' "${range}" > "${temp_file}"
+          bash scripts/security/check-sensitive-text.sh --context=commit-message "${temp_file}"
+
+      - name: Check pull request title/body for policy violations
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          temp_file="$(mktemp)"
+          printf '%s\n\n%s\n' "${PR_TITLE}" "${PR_BODY}" > "${temp_file}"
+          bash scripts/security/check-sensitive-text.sh --context=pr-metadata "${temp_file}"
