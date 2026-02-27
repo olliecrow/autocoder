@@ -92,3 +92,8 @@
 - Provide brief progress updates during work.
 - In the final response, include: what changed; why; verification evidence (tests/checks run); open risks or unknowns; and concise next steps when useful.
 - If there are decisions to be made, always state your recommendation.
+
+## Dictation-Aware Input Handling
+- The user often dictates prompts, so minor transcription errors and homophone substitutions are expected.
+- Infer intent from local context and repository state; ask a concise clarification only when ambiguity changes execution risk.
+- Keep explicit typo dictionaries at workspace level (do not duplicate repo-local typo maps).
