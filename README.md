@@ -3,6 +3,10 @@
 autocoder runs an issue to pull request loop for one GitHub repository at a time.
 You add a label, it works in isolated worktrees, and it reports status back to GitHub.
 
+## Current status
+
+This project is actively maintained and used for production issue-to-PR workflows.
+
 ## What this project is trying to achieve
 
 Give teams a simple and reliable way to automate issue handling while keeping humans in charge of review and merge.
