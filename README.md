@@ -154,3 +154,10 @@ autocoder keeps managed runtime state under `~/autocoder/`.
 - `docs/workflows.md`: execution and note routing conventions
 - `docs/decisions.md`: durable rationale and decision log
 - `docs/project-preferences.md`: durable project maintenance preferences
+
+<!-- third-party-policy:start -->
+## Third-Party Code Policy
+This repository allows external-code snapshots for static analysis only. External clones must stay in ephemeral `plan/` locations, be sanitized immediately (`rm -rf .git`, or remove all remotes first if `.git` is temporarily retained), and must never be executed.
+
+See `docs/untrusted-third-party-repos.md`.
+<!-- third-party-policy:end -->
