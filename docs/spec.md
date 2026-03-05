@@ -102,9 +102,9 @@ Existing issues:
 Minimal label set:
 - `autocoder`: opt-in / queued by a human.
 - `autocoder:claimed`: issue is actively owned by an autocoder instance.
+- `autocoder:needs-info`: autocoder is waiting on human clarification.
 
 Optional status labels:
-- `autocoder:needs-info`: autocoder is waiting on human clarification.
 - `autocoder:blocked`: autocoder is blocked on an external dependency (CI outage, cluster queue, etc).
 
 Bootstrap behavior:
