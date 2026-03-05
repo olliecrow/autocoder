@@ -15,6 +15,7 @@ This document defines how work is tracked so progress compounds without context 
 - `/plan/current/notes-index.md`: compact index of active workstreams and pointers to detailed notes.
 - `/plan/current/orchestrator-status.md`: packet/status board for parallel or subagent work.
 - `/plan/handoffs/`: sequential handoff summaries for staged automation workflows.
+- Runtime issue-worktree scratch uses `.autocoder/plan/` (for example `.autocoder/plan/current/...`); keep that local to the issue worktree.
 - Never place secrets, raw credentials, or confidential internal data in plan notes; use sanitized summaries.
 
 ## Parallel and subagent workflows
