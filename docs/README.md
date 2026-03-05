@@ -7,6 +7,8 @@ Entry points:
 - `docs/spec.md`: canonical product/workflow spec for autocoder.
 - `docs/workflows.md`: how we do work in this repo (notes, promotion, orchestration).
 - `docs/decisions.md`: durable decision log with context/rationale/trade-offs/enforcement.
+- `docs/project-preferences.md`: maintenance preferences and quality/security expectations.
+- `docs/untrusted-third-party-repos.md`: strict policy for cloning/analyzing third-party repos safely.
 
 Principles:
 - Keep content evergreen and aligned with the codebase.
