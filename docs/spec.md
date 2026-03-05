@@ -9,7 +9,7 @@ This document captures the current intended behavior of autocoder (the tool) at 
 - **allowlisted human (security)**: autocoder accepts instructions from a small, hard-coded allowlist of GitHub logins (for this repo, `olliecrow`). It only claims issues authored by allowlisted users. For those issues, codex context is restricted to content authored by that same issue author: issue-author comments/reviews only. All other users' content (even if allowlisted) is ignored for codex input to reduce prompt-injection risk. Runtime must prepare a trusted local thread-context artifact containing only this filtered content, and codex must use that artifact as its instruction source instead of reading raw issue/PR comment bodies from live `gh` output. Issue/PR body text is not a trusted instruction channel. Operationally, instruction updates must be posted as new issue-author comments/reviews; edits to existing comments/reviews are intentionally ignored as triggers. If an owned issue becomes disallowed (for example the issue author changes to a non-allowlisted login), autocoder stops work, removes lock labels best-effort, and cleans up local state. PR title/body edits are not treated as instruction updates; use issue-author PR comments/reviews for PR-side instruction updates. Even structured metadata (for example claim comments) must be ignored unless authored by an allowlisted login. Bot-authored comments are identified by the `[autocoder]` prefix and do not trigger new codex runs. Codex must also treat `[autocoder]` comments as status output (not instructions) and must scan earlier non-`[autocoder]` issue-author comments for actionable requirements and acceptance criteria.
 - **comment prefix**: every automated GitHub comment starts with `[autocoder]` on its own line, then a blank line, then the message.
 - **locking**: when autocoder takes an issue, it applies a lock/claim label and posts a claim comment (human-readable; may include machine-readable metadata).
-- **claim label is not a stop signal**: removing `autocoder:claimed` alone does not stop work; autocoder may re-add it best-effort while the issue remains opted-in. to stop work, remove the `autocoder` label.
+- **claim label is not a stop signal**: removing `autocoder:claimed` alone does not stop work; autocoder may re-add it best-effort while the issue remains opted-in. To stop work, remove the `autocoder` label.
 - **workspace isolation**: autocoder maintains its own repo checkout under `~/autocoder/` and uses **`git worktree` per issue** (one worktree/branch/PR per issue).
 - **no pushing to base branch**: autocoder never pushes directly to the base branch (for example `main`) and never auto-merges PRs. It only pushes to its issue branches and opens/updates PRs.
 - **stay up to date**: autocoder should regularly sync with the latest remote base branch and integrate updates into its issue branch (prefer merge over history rewrite).
@@ -91,7 +91,7 @@ Collision handling:
 
 Issue selection:
 - within a repo session, multiple issues may be claimed/owned concurrently, but they are processed sequentially.
-- when multiple open issues have label `autocoder` and are not `autocoder:claimed`, claim them deterministically (default: lowest issue number first). each issue gets its own worktree/branch/PR.
+- when multiple open issues have label `autocoder` and are not `autocoder:claimed`, claim them deterministically (default: lowest issue number first). Each issue gets its own worktree/branch/PR.
 - when multiple owned issues have actionable triggers in the same poll, run codex sequentially for each issue (fresh context each run).
 
 Existing issues:
@@ -131,7 +131,7 @@ next: reading context and asking any clarification questions (if needed).
 ```
 
 ## State machine
-Represented on GitHub via labels (names TBD) and/or structured comments.
+Represented on GitHub via labels and/or structured comments.
 
 Core states:
 - `queued`: eligible for autocoder to pick up.
@@ -377,7 +377,8 @@ Minimum communication behaviors:
 
 ## Safety boundaries
 - operate only within the configured target repo root.
-- never run destructive operations without explicit configuration/approval semantics.
+- do not run destructive operations outside autocoder-owned issue resources.
+- allowed destructive operations are limited to owned worktree/branch cleanup paths documented in this spec (for example local issue worktree removal and autocoder-managed issue branch deletion on stop/close/merge).
 - keep credentials local; do not print secrets into issue/PR comments.
 - do not commit secrets, tokens, private keys, or confidential internal information into repo files, docs, or notes.
 
