@@ -3,10 +3,14 @@
 This directory holds long-term, agent-focused documentation for this repo. It is committed to git.
 
 Entry points:
+- `README.md` (repo root): user-facing quickstart and orientation.
 - `AGENTS.md` (repo root): contributor/agent operating instructions.
+- `docs/README.md`: docs index and maintenance guidance.
 - `docs/spec.md`: canonical product/workflow spec for autocoder.
 - `docs/workflows.md`: how we do work in this repo (notes, promotion, orchestration).
 - `docs/decisions.md`: durable decision log with context/rationale/trade-offs/enforcement.
+- `docs/project-preferences.md`: durable maintenance preferences.
+- `docs/untrusted-third-party-repos.md`: static-analysis-only policy for external clones.
 
 Principles:
 - Keep content evergreen and aligned with the codebase.
