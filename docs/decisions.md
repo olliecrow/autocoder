@@ -2,6 +2,10 @@
 
 This document defines how to record fixes and important decisions so future work does not re-litigate the same questions. It is written to stay accurate over time; avoid time-specific language.
 
+Contract boundary:
+- `docs/spec.md` is the canonical behavior contract.
+- `docs/decisions.md` captures durable rationale and trade-offs behind that behavior.
+
 ## When to record
 - Any fix for a confirmed bug, regression, or safety issue.
 - Any deliberate behavior choice that differs from intuitive defaults.
