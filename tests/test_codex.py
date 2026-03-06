@@ -65,8 +65,8 @@ def test_run_exec_pins_model_reasoning_and_yolo(tmp_path: Path) -> None:
     assert len(runner.calls) == 1
 
     argv, cwd, input_text, timeout_s, check = runner.calls[0]
-    assert argv[:6] == ["codex", "-a", "never", "-m", "gpt-5.3-codex", "-c"]
-    assert 'model_reasoning_effort="xhigh"' in argv
+    assert argv[:6] == ["codex", "-a", "never", "-m", "gpt-5.4", "-c"]
+    assert 'model_reasoning_effort="high"' in argv
     assert "exec" in argv
     assert "-s" in argv
     assert "danger-full-access" in argv
