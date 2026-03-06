@@ -2,6 +2,8 @@
 
 This document captures the current intended behavior of autocoder (the tool) at a product/spec level. It is expected to evolve; keep it evergreen and consistent with actual behavior.
 
+Rationale for non-obvious choices belongs in `docs/decisions.md`; this spec focuses on behavior and contracts.
+
 ## Current decisions
 - **opt-in label starts work**: a human applies a label to an issue to make it eligible; no extra approval gate beyond that label.
 - **gh CLI only**: all GitHub interactions are done via `gh` (no bespoke direct API client).
@@ -145,7 +147,7 @@ Core states:
 
 ## Triggers and catch-up
 Autocoder should support a polling-based baseline:
-- poll GitHub every N minutes for new events (issues/PRs/comments/CI signals as needed).
+- poll GitHub every 1 minute for new events (issues/PRs/comments/CI signals as needed).
 - on startup (or wake), perform a catch-up scan so missed events during sleep are processed.
 
 Optional future enhancement:
