@@ -148,14 +148,9 @@ autocoder keeps managed runtime state under `~/autocoder/`.
 
 ## Documentation map
 
-- `README.md`: human-facing overview and quick start
-- `AGENTS.md`: contributor and agent operating guidelines
-- `docs/README.md`: docs index and maintenance conventions
-- `docs/spec.md`: canonical behavior and runtime security contracts
-- `docs/workflows.md`: execution and note routing conventions
-- `docs/decisions.md`: durable rationale and decision log
-- `docs/project-preferences.md`: durable project maintenance preferences
-- `docs/untrusted-third-party-repos.md`: static-analysis-only policy for external clones
+- `docs/README.md`: canonical index for repository documentation.
+- `docs/spec.md`: canonical behavior and runtime/security contract.
+- `AGENTS.md`: contributor and agent operating guidelines.
 
 <!-- third-party-policy:start -->
 ## Third-Party Code Policy
