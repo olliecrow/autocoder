@@ -209,7 +209,7 @@ Invocation principles:
 - codex runs non-interactively for discrete steps (for example: spec questions, implementation, PR fixes).
 - avoid invoking codex during idle polling; only invoke it when there is new actionable input.
 - run codex with explicit execution posture defined by autocoder (non-interactive, pinned model, pinned reasoning, yolo mode).
-- pin codex model to `gpt-5.3-codex` with reasoning effort `xhigh` for every autocoder invocation.
+- pin codex model to `gpt-5.4` with reasoning effort `high` for every autocoder invocation.
 - run codex in yolo mode for execution (`--ask-for-approval never` + `--sandbox danger-full-access`).
 - bound codex exec time: each codex invocation has a wall-clock timeout (default 36000s / 10h) to prevent a single run from blocking the whole repo session indefinitely. override with `AUTOCODER_CODEX_TIMEOUT_S` (integer seconds; non-positive/invalid values fall back to default).
 - treat each codex invocation as fresh/stateless; codex must re-acquire context each run via the prompt's memory/context map (docs, local state/artifacts, and GitHub issue/PR threads).
