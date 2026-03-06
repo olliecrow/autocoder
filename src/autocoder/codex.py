@@ -9,8 +9,8 @@ from typing import Any
 from ._runner import Runner
 
 
-_CODEX_MODEL = "gpt-5.3-codex"
-_CODEX_REASONING_EFFORT = "xhigh"
+_CODEX_MODEL = "gpt-5.4"
+_CODEX_REASONING_EFFORT = "high"
 _CODEX_SANDBOX = "danger-full-access"
 _CODEX_APPROVAL_POLICY = "never"
 
