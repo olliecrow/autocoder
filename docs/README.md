@@ -2,7 +2,7 @@
 
 This directory holds long-term, agent-focused documentation for this repo. It is committed to git.
 
-`README.md` keeps a short docs map; this file is the canonical, fuller index for `docs/`.
+`README.md` keeps a short documentation map; this file is the canonical, fuller index for `docs/`.
 
 Entry points:
 - `README.md` (repo root): user-facing quickstart and orientation.
