@@ -101,6 +101,7 @@ autocoder does not run its own OAuth flow.
 ## Known limitations
 
 - One autocoder process manages one repository at a time.
+- Within a repository session, opted-in issues are processed sequentially (not in parallel).
 - It depends on local `gh` and `codex` authentication sessions.
 - It requires SSH clone access to target repositories.
 

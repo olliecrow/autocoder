@@ -83,12 +83,12 @@ Desired behavior:
 - issues autocoder may act on should be explicitly opt-in (via label).
 - when an issue is claimed, it should be visibly “owned” by a specific autocoder instance to prevent collisions.
 
-Lock representation options:
-- a lock/claim label (recommended)
-- a structured claim comment (recommended; include who/where claimed it)
+Lock representation:
+- a lock/claim label (required)
+- a structured claim comment (required; include who/where claimed it)
 
 Collision handling:
-- if autocoder observes an issue already claimed, it must not proceed.
+- if autocoder observes an issue already claimed by another instance, it must not proceed.
 - if a claim race occurs, autocoder should detect it and back off.
 
 Issue selection:
