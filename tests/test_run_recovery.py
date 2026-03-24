@@ -8,6 +8,8 @@ import autocoder.run as runmod
 from autocoder.security import issue_allowed_human_activity_digest
 from autocoder.state import IssueState, RepoState
 
+ALLOWED = ("olliecrow",)
+
 
 class _GitStub:
     def __init__(self, *, default_sha: str, branch: str, dirty_status: str) -> None:
@@ -82,7 +84,7 @@ def test_run_one_iteration_triggers_codex_for_local_recovery(tmp_path: Path, mon
 
     rt = SimpleNamespace(
         repo=SimpleNamespace(owner="owner", name="repo", full_name="owner/repo"),
-        cfg=SimpleNamespace(mentions=()),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=ALLOWED),
         default_branch="main",
         managed_dir=tmp_path / "managed",
         git=git,
@@ -139,7 +141,7 @@ def test_run_one_iteration_posts_quick_ack_for_issue_author_update(tmp_path: Pat
 
     rt = SimpleNamespace(
         repo=SimpleNamespace(owner="owner", name="repo", full_name="owner/repo"),
-        cfg=SimpleNamespace(mentions=()),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=ALLOWED),
         default_branch="main",
         managed_dir=tmp_path / "managed",
         git=git,
@@ -179,7 +181,7 @@ def test_run_one_iteration_posts_quick_ack_for_issue_author_update(tmp_path: Pat
     assert ":eyes: update received. reviewing now." in gh.issue_comments[0][1]
 
 
-def test_run_one_iteration_skips_codex_for_issue_body_only_change(tmp_path: Path, monkeypatch) -> None:
+def test_run_one_iteration_skips_codex_for_later_issue_body_edit_only(tmp_path: Path, monkeypatch) -> None:
     issue = IssueDetail(
         number=1,
         title="t",
@@ -198,7 +200,7 @@ def test_run_one_iteration_skips_codex_for_issue_body_only_change(tmp_path: Path
 
     rt = SimpleNamespace(
         repo=SimpleNamespace(owner="owner", name="repo", full_name="owner/repo"),
-        cfg=SimpleNamespace(mentions=()),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=ALLOWED),
         default_branch="main",
         managed_dir=tmp_path / "managed",
         git=git,
@@ -210,12 +212,15 @@ def test_run_one_iteration_skips_codex_for_issue_body_only_change(tmp_path: Path
             1: IssueState(
                 branch=branch,
                 pr=None,
+                trusted_issue_body="initial body snapshot",
                 last_seen_issue_updated_at="2026-02-13T00:00:00Z",
                 last_seen_pr_updated_at=None,
                 last_seen_default_branch_sha=default_sha,
                 last_seen_allowed_issue_digest=issue_allowed_human_activity_digest(
                     issue_author="olliecrow",
+                    allowed_logins=ALLOWED,
                     comments=[],
+                    trusted_issue_body="initial body snapshot",
                 ),
                 last_seen_allowed_pr_digest=None,
             )
@@ -237,6 +242,67 @@ def test_run_one_iteration_skips_codex_for_issue_body_only_change(tmp_path: Path
 
     assert seen_triggers == []
     assert gh.issue_comments == []
+
+
+def test_run_one_iteration_triggers_codex_for_initial_issue_body_snapshot_only(
+    tmp_path: Path,
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    issue = IssueDetail(
+        number=1,
+        title="t",
+        url="https://example.test/issues/1",
+        state="OPEN",
+        updated_at="2026-02-13T00:10:00Z",
+        author="olliecrow",
+        body="initial trusted body",
+        labels=("autocoder", "autocoder:claimed"),
+        comments=(),
+    )
+    branch = "autocoder/issue-1-test"
+    default_sha = "abc123"
+    git = _GitStub(default_sha=default_sha, branch=branch, dirty_status="")
+    gh = _GhStub(issue=issue)
+
+    rt = SimpleNamespace(
+        repo=SimpleNamespace(owner="owner", name="repo", full_name="owner/repo"),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=ALLOWED),
+        default_branch="main",
+        managed_dir=tmp_path / "managed",
+        git=git,
+        gh=gh,
+    )
+
+    state = RepoState(
+        issues={
+            1: IssueState(
+                branch=branch,
+                pr=None,
+                last_seen_issue_updated_at=None,
+                last_seen_pr_updated_at=None,
+                last_seen_default_branch_sha=default_sha,
+                last_seen_allowed_issue_digest=None,
+                last_seen_allowed_pr_digest=None,
+            )
+        }
+    )
+
+    worktree_dir = tmp_path / "worktrees" / "issue-1"
+    worktree_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(runmod, "issue_worktree_dir", lambda repo, issue_number: worktree_dir)
+    monkeypatch.setattr(runmod, "_ensure_worktree", lambda **kwargs: worktree_dir)
+
+    seen_triggers: list[tuple[str, ...]] = []
+
+    def _fake_maybe_run_codex(**kwargs):  # type: ignore[no-untyped-def]
+        seen_triggers.append(kwargs["trigger_reasons"])
+
+    monkeypatch.setattr(runmod, "_maybe_run_codex", _fake_maybe_run_codex)
+
+    runmod._run_one_iteration(rt=rt, state=state)
+
+    assert seen_triggers == [("issue_updated",)]
+    assert state.issues[1].trusted_issue_body == "initial trusted body"
 
 
 def test_run_one_iteration_skips_codex_for_issue_author_comment_edit_only(tmp_path: Path, monkeypatch) -> None:
@@ -278,7 +344,7 @@ def test_run_one_iteration_skips_codex_for_issue_author_comment_edit_only(tmp_pa
 
     rt = SimpleNamespace(
         repo=SimpleNamespace(owner="owner", name="repo", full_name="owner/repo"),
-        cfg=SimpleNamespace(mentions=()),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=ALLOWED),
         default_branch="main",
         managed_dir=tmp_path / "managed",
         git=git,
@@ -295,6 +361,7 @@ def test_run_one_iteration_skips_codex_for_issue_author_comment_edit_only(tmp_pa
                 last_seen_default_branch_sha=default_sha,
                 last_seen_allowed_issue_digest=issue_allowed_human_activity_digest(
                     issue_author="olliecrow",
+                    allowed_logins=ALLOWED,
                     comments=[(c.id, c.author, c.updated_at, c.body) for c in comments_before],
                 ),
                 last_seen_allowed_pr_digest=None,
@@ -402,7 +469,7 @@ def test_run_one_iteration_retries_when_issue_author_comment_arrives_during_code
 
     rt = SimpleNamespace(
         repo=SimpleNamespace(owner="owner", name="repo", full_name="owner/repo"),
-        cfg=SimpleNamespace(mentions=()),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=ALLOWED),
         default_branch="main",
         managed_dir=tmp_path / "managed",
         git=git,
@@ -419,6 +486,7 @@ def test_run_one_iteration_retries_when_issue_author_comment_arrives_during_code
                 last_seen_default_branch_sha=default_sha,
                 last_seen_allowed_issue_digest=issue_allowed_human_activity_digest(
                     issue_author="olliecrow",
+                    allowed_logins=ALLOWED,
                     comments=[],
                 ),
                 last_seen_allowed_pr_digest=None,
@@ -447,5 +515,6 @@ def test_run_one_iteration_retries_when_issue_author_comment_arrives_during_code
     assert state.issues[1].last_seen_issue_updated_at == issue_after.updated_at
     assert state.issues[1].last_seen_allowed_issue_digest == issue_allowed_human_activity_digest(
         issue_author="olliecrow",
+        allowed_logins=ALLOWED,
         comments=[(c.id, c.author, c.updated_at, c.body) for c in comments_after],
     )
