@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import autocoder.security as security
 from autocoder.security import (
     filter_allowed_logins,
     is_allowed_login,
@@ -9,6 +7,8 @@ from autocoder.security import (
     normalize_login,
     pr_allowed_human_activity_digest,
 )
+
+ALLOWED = ("olliecrow",)
 
 
 def test_normalize_login() -> None:
@@ -19,13 +19,16 @@ def test_normalize_login() -> None:
 
 
 def test_is_allowed_login() -> None:
-    assert is_allowed_login("olliecrow") is True
-    assert is_allowed_login("@olliecrow") is True
-    assert is_allowed_login("someoneelse") is False
+    assert is_allowed_login("olliecrow", allowed_logins=ALLOWED) is True
+    assert is_allowed_login("@olliecrow", allowed_logins=ALLOWED) is True
+    assert is_allowed_login("someoneelse", allowed_logins=ALLOWED) is False
 
 
 def test_filter_allowed_logins() -> None:
-    assert filter_allowed_logins(["olliecrow", "@olliecrow", "someoneelse", ""]) == ("olliecrow",)
+    assert filter_allowed_logins(
+        ["olliecrow", "@olliecrow", "someoneelse", ""],
+        allowed_logins=ALLOWED,
+    ) == ("olliecrow",)
 
 
 def test_is_autocoder_comment() -> None:
@@ -41,7 +44,11 @@ def test_issue_digest_ignores_disallowed_and_bot_comments() -> None:
         ("2", "olliecrow", "2020-01-01T00:00:01Z", "[autocoder]\n\nbot update"),
         ("3", "olliecrow", "2020-01-01T00:00:02Z", "human request"),
     ]
-    d1 = issue_allowed_human_activity_digest(comments=comments, issue_author="olliecrow")
+    d1 = issue_allowed_human_activity_digest(
+        comments=comments,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
 
     # Disallowed content should not affect the digest.
     comments2 = [
@@ -49,7 +56,11 @@ def test_issue_digest_ignores_disallowed_and_bot_comments() -> None:
         ("2", "olliecrow", "2020-01-01T00:00:01Z", "[autocoder]\n\nbot update"),
         ("3", "olliecrow", "2020-01-01T00:00:02Z", "human request"),
     ]
-    d2 = issue_allowed_human_activity_digest(comments=comments2, issue_author="olliecrow")
+    d2 = issue_allowed_human_activity_digest(
+        comments=comments2,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
     assert d2 == d1
 
     # Bot-authored comments should not affect the digest.
@@ -58,7 +69,11 @@ def test_issue_digest_ignores_disallowed_and_bot_comments() -> None:
         ("2", "olliecrow", "2020-01-01T00:00:01Z", "[autocoder]\n\nchanged bot output"),
         ("3", "olliecrow", "2020-01-01T00:00:02Z", "human request"),
     ]
-    d3 = issue_allowed_human_activity_digest(comments=comments3, issue_author="olliecrow")
+    d3 = issue_allowed_human_activity_digest(
+        comments=comments3,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
     assert d3 == d1
 
     # Allowed comment edits should not affect the digest (ID is unchanged).
@@ -67,7 +82,11 @@ def test_issue_digest_ignores_disallowed_and_bot_comments() -> None:
         ("2", "olliecrow", "2020-01-01T00:00:01Z", "[autocoder]\n\nbot update"),
         ("3", "olliecrow", "2020-01-01T00:00:02Z", "human request v2"),
     ]
-    d4 = issue_allowed_human_activity_digest(comments=comments4, issue_author="olliecrow")
+    d4 = issue_allowed_human_activity_digest(
+        comments=comments4,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
     assert d4 == d1
 
     # New allowed comment IDs should affect the digest.
@@ -77,7 +96,11 @@ def test_issue_digest_ignores_disallowed_and_bot_comments() -> None:
         ("3", "olliecrow", "2020-01-01T00:00:02Z", "human request"),
         ("4", "olliecrow", "2020-01-01T00:00:03Z", "new instruction"),
     ]
-    d5 = issue_allowed_human_activity_digest(comments=comments5, issue_author="olliecrow")
+    d5 = issue_allowed_human_activity_digest(
+        comments=comments5,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
     assert d5 != d1
 
 
@@ -88,9 +111,33 @@ def test_issue_digest_ignores_comment_edits_and_updated_at() -> None:
     edited = [
         ("1", "olliecrow", "2020-01-01T00:30:00Z", "edited"),
     ]
-    d1 = issue_allowed_human_activity_digest(comments=comments, issue_author="olliecrow")
-    d2 = issue_allowed_human_activity_digest(comments=edited, issue_author="olliecrow")
+    d1 = issue_allowed_human_activity_digest(
+        comments=comments,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
+    d2 = issue_allowed_human_activity_digest(
+        comments=edited,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
     assert d1 == d2
+
+
+def test_issue_digest_changes_when_trusted_initial_body_snapshot_changes() -> None:
+    d1 = issue_allowed_human_activity_digest(
+        comments=[],
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+        trusted_issue_body="first body",
+    )
+    d2 = issue_allowed_human_activity_digest(
+        comments=[],
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+        trusted_issue_body="second body",
+    )
+    assert d1 != d2
 
 
 def test_pr_digest_ignores_disallowed_and_bot_comments() -> None:
@@ -104,7 +151,12 @@ def test_pr_digest_ignores_disallowed_and_bot_comments() -> None:
         ("r2", "olliecrow", "2020-01-01T00:00:01Z", "COMMENTED", "[autocoder]\n\nbot review"),
         ("r3", "olliecrow", "2020-01-01T00:00:02Z", "APPROVED", "human review"),
     ]
-    d1 = pr_allowed_human_activity_digest(comments=comments, reviews=reviews, issue_author="olliecrow")
+    d1 = pr_allowed_human_activity_digest(
+        comments=comments,
+        reviews=reviews,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
 
     comments2 = [
         ("1", "someoneelse", "2020-01-01T00:00:00Z", "different"),
@@ -117,7 +169,12 @@ def test_pr_digest_ignores_disallowed_and_bot_comments() -> None:
         ("r2", "olliecrow", "2020-01-01T00:00:01Z", "COMMENTED", "[autocoder]\n\nbot review"),
         ("r3", "olliecrow", "2020-01-01T00:00:02Z", "APPROVED", "human review"),
     ]
-    d2 = pr_allowed_human_activity_digest(comments=comments2, reviews=reviews2, issue_author="olliecrow")
+    d2 = pr_allowed_human_activity_digest(
+        comments=comments2,
+        reviews=reviews2,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
     assert d2 == d1
 
     comments3 = [
@@ -131,7 +188,12 @@ def test_pr_digest_ignores_disallowed_and_bot_comments() -> None:
         ("r2", "olliecrow", "2020-01-01T00:00:01Z", "COMMENTED", "[autocoder]\n\nchanged bot review"),
         ("r3", "olliecrow", "2020-01-01T00:00:02Z", "APPROVED", "human review"),
     ]
-    d3 = pr_allowed_human_activity_digest(comments=comments3, reviews=reviews3, issue_author="olliecrow")
+    d3 = pr_allowed_human_activity_digest(
+        comments=comments3,
+        reviews=reviews3,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
     assert d3 == d1
 
     # Allowed review edits/state changes should not affect the digest (ID is unchanged).
@@ -140,7 +202,12 @@ def test_pr_digest_ignores_disallowed_and_bot_comments() -> None:
         ("r2", "olliecrow", "2020-01-01T00:00:01Z", "COMMENTED", "[autocoder]\n\nbot review"),
         ("r3", "olliecrow", "2020-01-01T00:00:02Z", "CHANGES_REQUESTED", "human review"),
     ]
-    d_state = pr_allowed_human_activity_digest(comments=comments, reviews=reviews_state, issue_author="olliecrow")
+    d_state = pr_allowed_human_activity_digest(
+        comments=comments,
+        reviews=reviews_state,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
     assert d_state == d1
 
     comments4 = [
@@ -153,7 +220,12 @@ def test_pr_digest_ignores_disallowed_and_bot_comments() -> None:
         ("r2", "olliecrow", "2020-01-01T00:00:01Z", "COMMENTED", "[autocoder]\n\nbot review"),
         ("r3", "olliecrow", "2020-01-01T00:00:02Z", "APPROVED", "human review v2"),
     ]
-    d4 = pr_allowed_human_activity_digest(comments=comments4, reviews=reviews4, issue_author="olliecrow")
+    d4 = pr_allowed_human_activity_digest(
+        comments=comments4,
+        reviews=reviews4,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
     assert d4 == d1
 
     comments5 = [
@@ -162,18 +234,23 @@ def test_pr_digest_ignores_disallowed_and_bot_comments() -> None:
         ("3", "olliecrow", "2020-01-01T00:00:02Z", "human request"),
         ("4", "olliecrow", "2020-01-01T00:00:03Z", "new comment"),
     ]
-    d5 = pr_allowed_human_activity_digest(comments=comments5, reviews=reviews, issue_author="olliecrow")
+    d5 = pr_allowed_human_activity_digest(
+        comments=comments5,
+        reviews=reviews,
+        issue_author="olliecrow",
+        allowed_logins=ALLOWED,
+    )
     assert d5 != d1
 
 
-def test_issue_digest_ignores_other_allowlisted_users_when_issue_author_is_set(monkeypatch) -> None:
-    monkeypatch.setattr(security, "ALLOWED_GITHUB_LOGINS", frozenset({"alice", "bob"}))
+def test_issue_digest_ignores_other_allowlisted_users_when_issue_author_is_set() -> None:
     comments = [
         ("1", "alice", "2020-01-01T00:00:00Z", "instruction from issue author"),
     ]
     d1 = issue_allowed_human_activity_digest(
         comments=comments,
         issue_author="alice",
+        allowed_logins=("alice", "bob"),
     )
     comments2 = [
         ("1", "alice", "2020-01-01T00:00:00Z", "instruction from issue author"),
@@ -182,12 +259,12 @@ def test_issue_digest_ignores_other_allowlisted_users_when_issue_author_is_set(m
     d2 = issue_allowed_human_activity_digest(
         comments=comments2,
         issue_author="alice",
+        allowed_logins=("alice", "bob"),
     )
     assert d2 == d1
 
 
-def test_pr_digest_ignores_other_allowlisted_users_when_issue_author_is_set(monkeypatch) -> None:
-    monkeypatch.setattr(security, "ALLOWED_GITHUB_LOGINS", frozenset({"alice", "bob"}))
+def test_pr_digest_ignores_other_allowlisted_users_when_issue_author_is_set() -> None:
     comments = [
         ("1", "alice", "2020-01-01T00:00:00Z", "issue author comment"),
     ]
@@ -198,6 +275,7 @@ def test_pr_digest_ignores_other_allowlisted_users_when_issue_author_is_set(monk
         comments=comments,
         reviews=reviews,
         issue_author="alice",
+        allowed_logins=("alice", "bob"),
     )
     comments2 = [
         ("1", "alice", "2020-01-01T00:00:00Z", "issue author comment"),
@@ -211,5 +289,6 @@ def test_pr_digest_ignores_other_allowlisted_users_when_issue_author_is_set(monk
         comments=comments2,
         reviews=reviews2,
         issue_author="alice",
+        allowed_logins=("alice", "bob"),
     )
     assert d2 == d1

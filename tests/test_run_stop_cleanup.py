@@ -56,7 +56,7 @@ def test_run_one_iteration_removes_lock_labels_when_autocoder_label_removed(tmp_
 
     rt = SimpleNamespace(
         repo=SimpleNamespace(owner="owner", name="repo", full_name="owner/repo"),
-        cfg=SimpleNamespace(mentions=()),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
         default_branch="main",
         managed_dir=tmp_path / "managed",
         git=git,
@@ -88,7 +88,7 @@ def test_run_one_iteration_removes_lock_labels_when_issue_author_not_allowlisted
 
     rt = SimpleNamespace(
         repo=SimpleNamespace(owner="owner", name="repo", full_name="owner/repo"),
-        cfg=SimpleNamespace(mentions=()),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
         default_branch="main",
         managed_dir=tmp_path / "managed",
         git=git,

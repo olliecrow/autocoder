@@ -5,31 +5,27 @@ import json
 from typing import Iterable
 
 
-# Safety measure: only accept instructions from these GitHub logins.
-# Keep this committed and intentionally small; we can generalize later.
-ALLOWED_GITHUB_LOGINS: frozenset[str] = frozenset(
-    {
-        "olliecrow",
-    }
-)
+def normalize_allowed_logins(logins: Iterable[str]) -> frozenset[str]:
+    return frozenset(normalize_login(login) for login in logins if normalize_login(login))
 
 
 def normalize_login(login: str) -> str:
     return (login or "").strip().lstrip("@").lower()
 
 
-def is_allowed_login(login: str) -> bool:
-    return normalize_login(login) in ALLOWED_GITHUB_LOGINS
+def is_allowed_login(login: str, *, allowed_logins: Iterable[str]) -> bool:
+    return normalize_login(login) in normalize_allowed_logins(allowed_logins)
 
 
-def filter_allowed_logins(logins: Iterable[str]) -> tuple[str, ...]:
+def filter_allowed_logins(logins: Iterable[str], *, allowed_logins: Iterable[str]) -> tuple[str, ...]:
+    allowed = normalize_allowed_logins(allowed_logins)
     out: list[str] = []
     seen: set[str] = set()
     for raw in logins:
         n = normalize_login(raw)
         if not n or n in seen:
             continue
-        if n in ALLOWED_GITHUB_LOGINS:
+        if n in allowed:
             seen.add(n)
             out.append(n)
     return tuple(out)
@@ -44,8 +40,8 @@ def is_autocoder_comment(body: str) -> bool:
     return (body or "").lstrip().lower().startswith(_AUTOCODER_COMMENT_PREFIX_LINE)
 
 
-def is_allowed_human_comment(*, author: str, body: str) -> bool:
-    return is_allowed_login(author) and not is_autocoder_comment(body)
+def is_allowed_human_comment(*, author: str, body: str, allowed_logins: Iterable[str]) -> bool:
+    return is_allowed_login(author, allowed_logins=allowed_logins) and not is_autocoder_comment(body)
 
 
 def _sha256_hexdigest(obj: object) -> str:
@@ -57,6 +53,8 @@ def issue_allowed_human_activity_digest(
     *,
     comments: Iterable[tuple[str, str, str, str]],
     issue_author: str | None = None,
+    allowed_logins: Iterable[str],
+    trusted_issue_body: str | None = None,
 ) -> str:
     """
     Digest of allowlisted *human* issue activity.
@@ -70,13 +68,13 @@ def issue_allowed_human_activity_digest(
     - bot-authored comments (identified by `[autocoder]` prefix)
 
     Notes:
-    - Ignores edits: digest is based on stable comment IDs only.
+    - Ignores edits to comments: digest is based on stable comment IDs only.
     - When `issue_author` is provided, only comment IDs from that same login are included.
     """
     issue_actor = normalize_login(issue_author or "")
     kept_ids: list[str] = []
     for cid, author, _updated_at, body in comments:
-        if not is_allowed_human_comment(author=author, body=body):
+        if not is_allowed_human_comment(author=author, body=body, allowed_logins=allowed_logins):
             continue
         if issue_actor and normalize_login(author) != issue_actor:
             continue
@@ -85,6 +83,7 @@ def issue_allowed_human_activity_digest(
     kept_ids.sort()
 
     payload = {
+        "issue_body": trusted_issue_body or "",
         "comments": kept_ids,
     }
     return _sha256_hexdigest(payload)
@@ -95,6 +94,7 @@ def pr_allowed_human_activity_digest(
     comments: Iterable[tuple[str, str, str, str]],
     reviews: Iterable[tuple[str, str, str, str, str]] | None = None,
     issue_author: str | None = None,
+    allowed_logins: Iterable[str],
 ) -> str:
     """
     Digest of allowlisted *human* PR activity (excludes bot comments).
@@ -110,7 +110,7 @@ def pr_allowed_human_activity_digest(
     issue_actor = normalize_login(issue_author or "")
     kept_comment_ids: list[str] = []
     for cid, author, _updated_at, body in comments:
-        if not is_allowed_human_comment(author=author, body=body):
+        if not is_allowed_human_comment(author=author, body=body, allowed_logins=allowed_logins):
             continue
         if issue_actor and normalize_login(author) != issue_actor:
             continue
@@ -119,7 +119,7 @@ def pr_allowed_human_activity_digest(
     kept_review_ids: list[str] = []
     if reviews is not None:
         for rid, author, _submitted_at, _state, body in reviews:
-            if not is_allowed_human_comment(author=author, body=body):
+            if not is_allowed_human_comment(author=author, body=body, allowed_logins=allowed_logins):
                 continue
             if issue_actor and normalize_login(author) != issue_actor:
                 continue

@@ -68,17 +68,30 @@ References:
 `src/autocoder/state.py`, `src/autocoder/run.py`, `docs/spec.md`
 
 Decision:
-For allowlisted-author issues, include issue-author comments/reviews only (ignore issue/PR bodies) and ignore all other users' thread content.
+Keep the trust boundary strict, but source the allowlisted GitHub logins from config and deny by default until they are explicitly configured.
+Context:
+Hard-coding an operator-specific GitHub username in source breaks the project's reusable/open-source-ready posture and makes the trust boundary harder to adapt per installation.
+Rationale:
+`allowed_github_logins` in global/per-repo config preserves the same strict trust model while keeping operator identity out of source. Deny-by-default is the safest fallback when config is missing.
+Trade-offs:
+Requires a minimal config step before autocoder will claim any issue. Misconfiguration can leave autocoder idle until corrected.
+Enforcement:
+Runtime loads `allowed_github_logins` from config, logs the effective set, and passes it into security checks, trusted digests, prompt metadata, mentions filtering, issue claiming, and PR mutation safety.
+References:
+`src/autocoder/config.py`, `src/autocoder/security.py`, `src/autocoder/run.py`, `tests/test_config.py`, `docs/spec.md`
+
+Decision:
+For allowlisted-author issues, include the trusted initial issue-body snapshot plus issue-author comments/reviews, and ignore all other users' thread content.
 Context:
 The operator wants maximum prompt-injection resistance: if another user comments on their issue, that content must not enter codex context.
 Rationale:
-Single-author, comment/review-only context gives a stronger prompt-injection boundary and avoids relying on body/edit provenance.
+Single-author context gives a strong prompt-injection boundary. Capturing the initial issue body once preserves the common GitHub pattern where the issue body contains the primary spec, without turning later mutable body edits into a live instruction channel.
 Trade-offs:
-Collaboration comments from other users are intentionally ignored by codex and may require the issue author to restate relevant points. Issue/PR body text and edits to existing comments/reviews are ignored for instruction triggering, so updates must be posted as new issue-author comments/reviews.
+Collaboration comments from other users are intentionally ignored by codex and may require the issue author to restate relevant points. Later issue-body edits, PR body text, and edits to existing comments/reviews are ignored for instruction triggering, so updates must be posted as new issue-author comments/reviews.
 Enforcement:
-Issue/PR activity digests include only issue-author activity when `issue_author` is provided and are keyed to stable comment/review IDs (not edits), codex prompt context-fetch filters are pinned to issue-author login only, and runtime attachment extraction is limited to issue-author comments/reviews with a local manifest under `.autocoder/artifacts/attachments-manifest.json`.
+Issue state persists the trusted initial issue body, trusted issue digests include that snapshot plus issue-author comment IDs, codex prompt context-fetch filters are pinned to issue-author login only, and runtime attachment extraction is limited to issue-author comments/reviews with a local manifest under `.autocoder/artifacts/attachments-manifest.json`.
 References:
-`src/autocoder/security.py`, `src/autocoder/run.py`, `tests/test_security.py`, `tests/test_run_prompt.py`, `docs/spec.md`
+`src/autocoder/security.py`, `src/autocoder/run.py`, `src/autocoder/state.py`, `tests/test_security.py`, `tests/test_run_prompt.py`, `tests/test_run_recovery.py`, `docs/spec.md`
 
 Decision:
 Only trigger default-branch merge-sync when the issue branch ref can be resolved (local branch or `origin/<branch>`), to avoid false "default branch advanced" triggers for not-yet-created branches.

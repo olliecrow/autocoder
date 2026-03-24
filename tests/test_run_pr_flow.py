@@ -106,7 +106,7 @@ def test_maybe_run_codex_skips_pr_create_when_branch_matches_default(tmp_path: P
 
     rt = SimpleNamespace(
         repo=SimpleNamespace(full_name="owner/repo"),
-        cfg=SimpleNamespace(mentions=()),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
         default_branch="main",
         managed_dir=tmp_path / "managed",
         state_path=tmp_path / "state.json",
@@ -188,7 +188,7 @@ def test_find_or_adopt_pr_rejects_non_allowlisted_pr_author() -> None:
         reviews=(),
     )
     gh = _GhAdoptStub(pr=pr)
-    rt = SimpleNamespace(gh=gh)
+    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)))
     issue_state = IssueState(branch="autocoder/issue-1-test", pr=123)
 
     adopted = _find_or_adopt_pr(rt=rt, issue_state=issue_state, issue_number=1, issue_author="olliecrow")
@@ -217,7 +217,7 @@ def test_find_or_adopt_pr_rejects_cross_repository_pr() -> None:
         reviews=(),
     )
     gh = _GhAdoptStub(pr=pr)
-    rt = SimpleNamespace(gh=gh)
+    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)))
     issue_state = IssueState(branch="autocoder/issue-1-test", pr=123)
 
     adopted = _find_or_adopt_pr(rt=rt, issue_state=issue_state, issue_number=1, issue_author="olliecrow")
@@ -245,7 +245,7 @@ def test_find_or_adopt_pr_rejects_pr_author_mismatch_with_issue_author() -> None
         reviews=(),
     )
     gh = _GhAdoptStub(pr=pr)
-    rt = SimpleNamespace(gh=gh)
+    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)))
     issue_state = IssueState(branch="autocoder/issue-1-test", pr=123)
 
     adopted = _find_or_adopt_pr(
@@ -346,7 +346,11 @@ def test_issue_author_attachment_urls_filters_to_issue_author_only() -> None:
         ),
     )
 
-    urls = _issue_author_attachment_urls(issue=issue, pr=pr)
+    urls = _issue_author_attachment_urls(
+        issue=issue,
+        pr=pr,
+        allowed_logins=("olliecrow",),
+    )
 
     assert urls == (
         "https://example.com/issue-author-comment.png",
@@ -380,6 +384,7 @@ def test_sync_issue_author_attachments_downloads_once_and_reuses_manifest(tmp_pa
     )
     rt = SimpleNamespace(
         repo=SimpleNamespace(host="github.com"),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
         gh=SimpleNamespace(),
         runner=SimpleNamespace(),
     )
@@ -458,6 +463,7 @@ def test_sync_issue_author_attachments_prunes_manifest_when_url_removed(tmp_path
     )
     rt = SimpleNamespace(
         repo=SimpleNamespace(host="github.com"),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
         gh=SimpleNamespace(),
         runner=SimpleNamespace(),
     )
@@ -519,6 +525,7 @@ def test_sync_issue_author_attachments_does_not_delete_files_outside_artifacts(t
     )
     rt = SimpleNamespace(
         repo=SimpleNamespace(host="github.com"),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
         gh=SimpleNamespace(),
         runner=SimpleNamespace(),
     )
@@ -601,6 +608,7 @@ def test_sync_issue_author_attachments_keeps_existing_rows_when_pr_context_fetch
 
     rt = SimpleNamespace(
         repo=SimpleNamespace(host="github.com"),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
         gh=SimpleNamespace(view_pr=_raise_view_pr),
         runner=SimpleNamespace(),
     )
@@ -722,12 +730,20 @@ def test_prepare_trusted_thread_context_filters_to_issue_author_non_bot_content(
     )
 
     rt = SimpleNamespace(
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
         gh=SimpleNamespace(view_pr=lambda *, number, include_comments: pr),
     )
-    out_path = _prepare_trusted_thread_context(rt=rt, issue=issue, pr=pr, worktree_dir=worktree)
+    out_path = _prepare_trusted_thread_context(
+        rt=rt,
+        issue=issue,
+        pr=pr,
+        worktree_dir=worktree,
+        trusted_issue_body="captured initial body",
+    )
     payload = json.loads(out_path.read_text(encoding="utf-8"))
 
     assert payload["issue_author"] == "olliecrow"
+    assert payload["issue"]["initial_body"] == "captured initial body"
     assert [c["id"] for c in payload["issue"]["comments"]] == ["c1"]
     assert [c["id"] for c in payload["pr"]["comments"]] == ["pc1"]
     assert [r["id"] for r in payload["pr"]["reviews"]] == ["r1"]

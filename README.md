@@ -36,13 +36,20 @@ gh auth status
 uv sync
 ```
 
-3. Run autocoder for one repository.
+3. Configure the GitHub logins autocoder is allowed to trust.
+
+```toml
+# ~/autocoder/config.toml
+allowed_github_logins = ["your-github-login"]
+```
+
+4. Run autocoder for one repository.
 
 ```bash
 uv run python -m autocoder run git@github.com:OWNER/REPO.git
 ```
 
-4. Optional quick checks before running.
+5. Optional quick checks before running.
 
 ```bash
 uv run python -m autocoder doctor git@github.com:OWNER/REPO.git
@@ -144,6 +151,7 @@ autocoder keeps managed runtime state under `~/autocoder/`.
 - managed clone: `~/autocoder/repos/<owner>/<repo>/repo`
 - per-issue worktrees: `~/autocoder/repos/<owner>/<repo>/worktrees/issue-<n>`
 - runtime state: `~/autocoder/repos/<owner>/<repo>/state`
+- global config: `~/autocoder/config.toml`
 - per-repo config: `~/autocoder/repos/<owner>/<repo>/config.toml`
 - local issue artifacts: `.autocoder/` inside issue worktrees, gitignored
 

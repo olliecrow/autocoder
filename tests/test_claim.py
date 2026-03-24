@@ -30,7 +30,10 @@ def test_parse_claim_comment_rejects_non_autocoder_prefix() -> None:
 
 
 def test_issue_claimed_by_this_instance_ignores_non_allowlisted_comment_author() -> None:
-    rt = SimpleNamespace(instance_id="123e4567-e89b-12d3-a456-426614174000")
+    rt = SimpleNamespace(
+        instance_id="123e4567-e89b-12d3-a456-426614174000",
+        cfg=SimpleNamespace(allowed_github_logins=("olliecrow",)),
+    )
     body = "\n".join(
         [
             "[autocoder]",
@@ -66,7 +69,10 @@ def test_issue_claimed_by_this_instance_ignores_non_allowlisted_comment_author()
 
 
 def test_issue_claimed_by_this_instance_accepts_allowlisted_comment_author() -> None:
-    rt = SimpleNamespace(instance_id="123e4567-e89b-12d3-a456-426614174000")
+    rt = SimpleNamespace(
+        instance_id="123e4567-e89b-12d3-a456-426614174000",
+        cfg=SimpleNamespace(allowed_github_logins=("olliecrow",)),
+    )
     body = "\n".join(
         [
             "[autocoder]",
@@ -102,7 +108,10 @@ def test_issue_claimed_by_this_instance_accepts_allowlisted_comment_author() -> 
 
 
 def test_issue_claimed_by_this_instance_uses_latest_claim_comment() -> None:
-    rt = SimpleNamespace(instance_id="11111111-1111-1111-1111-111111111111")
+    rt = SimpleNamespace(
+        instance_id="11111111-1111-1111-1111-111111111111",
+        cfg=SimpleNamespace(allowed_github_logins=("olliecrow",)),
+    )
     body_old = "\n".join(
         [
             "[autocoder]",
@@ -155,7 +164,10 @@ def test_issue_claimed_by_this_instance_uses_latest_claim_comment() -> None:
 
 
 def test_issue_claimed_by_this_instance_accepts_latest_matching_claim() -> None:
-    rt = SimpleNamespace(instance_id="11111111-1111-1111-1111-111111111111")
+    rt = SimpleNamespace(
+        instance_id="11111111-1111-1111-1111-111111111111",
+        cfg=SimpleNamespace(allowed_github_logins=("olliecrow",)),
+    )
     body_old_other = "\n".join(
         [
             "[autocoder]",

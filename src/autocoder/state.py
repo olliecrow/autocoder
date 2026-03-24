@@ -9,6 +9,7 @@ from pathlib import Path
 class IssueState:
     branch: str | None = None
     pr: int | None = None
+    trusted_issue_body: str | None = None
     last_seen_issue_updated_at: str | None = None
     last_seen_pr_updated_at: str | None = None
     last_seen_default_branch_sha: str | None = None
@@ -48,6 +49,7 @@ def load_repo_state(path: Path) -> RepoState:
                 issue_number_int: IssueState(
                     branch=data.get("active_branch"),
                     pr=data.get("active_pr"),
+                    trusted_issue_body=data.get("trusted_issue_body"),
                     last_seen_issue_updated_at=data.get("last_seen_issue_updated_at"),
                     last_seen_pr_updated_at=data.get("last_seen_pr_updated_at"),
                     last_seen_default_branch_sha=data.get("last_seen_default_branch_sha"),
@@ -70,6 +72,7 @@ def load_repo_state(path: Path) -> RepoState:
             issues[issue_number_int] = IssueState(
                 branch=v.get("branch"),
                 pr=v.get("pr"),
+                trusted_issue_body=v.get("trusted_issue_body"),
                 last_seen_issue_updated_at=v.get("last_seen_issue_updated_at"),
                 last_seen_pr_updated_at=v.get("last_seen_pr_updated_at"),
                 last_seen_default_branch_sha=v.get("last_seen_default_branch_sha"),
