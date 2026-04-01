@@ -6,6 +6,11 @@
 - workflow is specs-first: for non-trivial work, clarify requirements in the issue (and/or in `docs/spec.md`) before implementation.
 - `docs/spec.md` is the canonical source of truth for current behavior; keep it consistent with the code.
 
+## Repository Ownership
+- This repository belongs under the personal GitHub account `olliecrow`.
+- Do not move it to a GitHub organization or a different personal account unless Ollie explicitly asks for that change.
+- When docs, remotes, automation, releases, or publishing steps need the owning GitHub account, use `olliecrow`.
+
 ## Open-Source Transition Posture
 - Treat the project as open-source-ready, even while the repository is private.
 - Never commit secrets, credentials, tokens, private keys, or confidential internal information.
