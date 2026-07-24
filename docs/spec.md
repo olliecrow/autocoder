@@ -6,7 +6,7 @@ Rationale for non-obvious choices belongs in `docs/decisions.md`; this spec focu
 
 ## Current decisions
 - **opt-in label starts work**: a human applies a label to an issue to make it eligible; no extra approval gate beyond that label.
-- **gh CLI only**: all GitHub interactions are done via `gh` (no bespoke direct API client).
+- **GitHub operations use `gh`**: GitHub metadata reads and mutations use the authenticated `gh` CLI. Attachment bytes are fetched only from approved GitHub-hosted HTTPS URLs.
 - **local user identity**: GitHub actions (comments/labels/PRs) and git commits are performed as the locally authenticated user (whatever `gh` and local git config are set to).
 - **allowlisted human (security)**: autocoder accepts instructions only from operator-configured GitHub logins (`allowed_github_logins` in config; deny by default until configured). It only claims issues authored by allowlisted users. For those issues, codex context is restricted to content authored by that same issue author: a trusted snapshot of the initial issue body captured when autocoder first owns the issue, plus issue-author comments/reviews. All other users' content (even if allowlisted) is ignored for codex input to reduce prompt-injection risk. Runtime must prepare a trusted local thread-context artifact containing only this filtered content, and codex must use that artifact as its instruction source instead of reading raw issue/PR comment bodies from live `gh` output. Later issue-body edits and PR title/body edits are not trusted instruction channels. Operationally, instruction updates must be posted as new issue-author comments/reviews; edits to existing comments/reviews are intentionally ignored as triggers. If an owned issue becomes disallowed (for example the issue author changes to a non-allowlisted login), autocoder stops work, removes lock labels best-effort, and cleans up local state. Even structured metadata (for example claim comments) must be ignored unless authored by an allowlisted login. Bot-authored comments are identified by the `[autocoder]` prefix and do not trigger new codex runs. Codex must also treat `[autocoder]` comments as status output (not instructions) and must scan earlier non-`[autocoder]` issue-author comments for actionable requirements and acceptance criteria.
 - **comment prefix**: every automated GitHub comment starts with `[autocoder]` on its own line, then a blank line, then the message.
@@ -24,9 +24,9 @@ Rationale for non-obvious choices belongs in `docs/decisions.md`; this spec focu
 - **multi-project via multi-process**: multiple repos are supported by running multiple autocoder sessions (for example, separate terminals), one per repo.
 - **per-repo session lock**: autocoder creates a local lock file for the target repo while running to prevent accidental concurrent sessions against the same repo (and cleans up stale locks on restart).
 - **no local system changes**: autocoder must not intentionally modify system files or global configuration; all actions should be confined to its managed workspace and the target repo.
-- **open-source-ready hygiene**: treat project artifacts as future-public even while the repo is private; do not commit secrets or confidential data.
+- **public-project hygiene**: treat every committed artifact as public; do not commit secrets, private data, machine-specific details, or confidential material.
 - **no command allow/deny list**: do not introduce an explicit per-command allowlist/denylist system.
-- **codex runs headless with pinned runtime profile**: run codex via Codex CLI in non-interactive mode with pinned model/reasoning and yolo execution posture configured by autocoder.
+- **codex runs headless with a pinned runtime profile**: run Codex CLI non-interactively with the model, reasoning, sandbox, and approval posture configured by autocoder.
 - **stop signal**: autocoder must only act on issues that have the opt-in label `autocoder`; if `autocoder` is removed, autocoder must stop working on that issue.
 - **issue close is authoritative**: if a human closes an issue, autocoder should stop and run cleanup (including closing its PR and deleting its branch/worktree).
 - **poll interval is fixed**: polling runs every 1 minute (hard-coded default).
@@ -106,9 +106,6 @@ Minimal label set:
 - `autocoder:claimed`: issue is actively owned by an autocoder instance.
 - `autocoder:needs-info`: autocoder is waiting on human clarification.
 
-Optional status labels:
-- `autocoder:blocked`: autocoder is blocked on an external dependency (CI outage, cluster queue, etc).
-
 Bootstrap behavior:
 - on first run for a repo, autocoder creates missing labels (name, color, description) via `gh` if the authenticated user has permission.
 
@@ -118,19 +115,10 @@ Requirements:
 - must be human-readable.
 - must not include sensitive local machine details (avoid hostnames and absolute local paths).
 
-Suggested minimal content:
+Required content:
 - reference to the issue branch name (for example `autocoder/issue-123-short-slug`)
 - an opaque instance id (random UUID stored locally) to disambiguate concurrent sessions
 - current state (`claimed`, `needs-info`, etc)
-
-Suggested format:
-```
-[autocoder]
-
-claimed by autocoder (instance: <opaque-id>).
-branch: <branch-name>
-next: reading context and asking any clarification questions (if needed).
-```
 
 ## State machine
 Represented on GitHub via labels and/or structured comments.
@@ -142,16 +130,12 @@ Core states:
 - `ready`: spec is sufficiently clear; implementation can start.
 - `in-progress`: actively implementing in local workspace.
 - `pr-open`: PR exists; work continues via PR review/CI loop.
-- `blocked`: waiting on an external blocker (human input, CI infra, etc).
 - `done`: merged/closed and summarized.
 
 ## Triggers and catch-up
 Autocoder should support a polling-based baseline:
 - poll GitHub every 1 minute for new events (issues/PRs/comments/CI signals as needed).
 - on startup (or wake), perform a catch-up scan so missed events during sleep are processed.
-
-Optional future enhancement:
-- GitHub webhooks (requires a publicly reachable endpoint or tunnel); still keep polling as a fallback.
 
 ### Polling
 Default:
@@ -212,17 +196,16 @@ Codex is run locally via Codex CLI (not the desktop app) and uses the local user
 Invocation principles:
 - codex runs non-interactively for discrete steps (for example: spec questions, implementation, PR fixes).
 - avoid invoking codex during idle polling; only invoke it when there is new actionable input.
-- run codex with explicit execution posture defined by autocoder (non-interactive, pinned model, pinned reasoning, yolo mode).
-- pin codex model to `gpt-5.4` with reasoning effort `high` for every autocoder invocation.
-- run codex in yolo mode for execution (`--ask-for-approval never` + `--sandbox danger-full-access`).
-- bound codex exec time: each codex invocation has a wall-clock timeout (default 36000s / 10h) to prevent a single run from blocking the whole repo session indefinitely. override with `AUTOCODER_CODEX_TIMEOUT_S` (integer seconds; non-positive/invalid values fall back to default).
+- run codex with the explicit execution posture defined by autocoder.
+- pin codex to `gpt-5.6-sol` with reasoning effort `high` for every invocation.
+- run codex without interactive approvals and with unrestricted local execution (`--ask-for-approval never` and `--sandbox danger-full-access`).
+- bound each invocation with a wall-clock timeout (default 36000s / 10h). `AUTOCODER_CODEX_TIMEOUT_S` may set a positive integer override; invalid or non-positive values fail startup.
 - treat each codex invocation as fresh/stateless; codex must re-acquire context each run via the prompt's memory/context map (docs, local state/artifacts, and GitHub issue/PR threads).
-- include a local Codex skill catalog in each codex prompt and instruct codex to prefer skill-driven workflows whenever relevant.
-- assume autocoder is running on the local machine where skills are installed; if skill discovery is temporarily empty, codex should inspect local skill roots (`~/.codex/skills`, `$CODEX_HOME/skills`) and proceed with skill-driven workflows.
-- instruct codex to run the `prime` skill at the start of each codex conversation.
-- prefer comprehensive prompts that front-load analysis, assumptions, risks, and decision framing instead of minimal prompts.
+- discover repository skills under `.agents/skills/` and installed local Codex skills, then include the catalog in each prompt.
+- use only the smallest set of skills that materially helps the task; an empty catalog is valid.
+- keep the runtime prompt concise and direct. Let the repository, trusted issue context, and task risk determine the depth of planning and verification.
 - prioritize autonomous resolution when confidence is high; interrupt humans only for true blockers or material trade-offs.
-- when requesting human input, ask batched, decision-grade questions with clear context, options, and recommendations.
+- when human input is required, ask the fewest focused questions needed to resolve the material decision.
 - ensure humans stay in the loop: every codex invocation should produce a clear GitHub status update (issue comment, and PR comment when relevant) so a human can understand what happened and what comes next by reading the thread.
 - when issue-author instructions change and autocoder is about to invoke codex, post an immediate lightweight acknowledgment comment (for example `:eyes:`) before the longer codex run completes.
 - status updates should be explicit about current state, context (branch/PR), what triggered the run, what was checked/done, and what happens next.
@@ -231,7 +214,7 @@ Invocation principles:
 - treat default-branch advancement as a codex trigger: when `origin/<default-branch>` moves ahead of the active issue branch, invoke codex to perform merge-sync work and push updates.
 - treat local interrupted work as a codex trigger: if an owned issue worktree is dirty or has an in-progress git operation after restart/failure, invoke codex to recover and continue.
 - if new trusted issue-author comments/reviews arrive while codex is running, do not advance issue/PR "last seen" cursors past that newer trusted activity; schedule a follow-up codex run so the new input is processed.
-- prefer frequent checkpoint commits/pushes whenever meaningful changes exist; do not create empty commits.
+- create and push coherent checkpoint commits whenever meaningful changes exist; do not create empty commits.
 - codex should assume each run may be the last before interruption; preserve durable context in repo docs and preserve code state via commits/pushes before finishing.
 
 Default sandbox posture:
@@ -269,10 +252,10 @@ Managed checkout behavior:
 Note:
 - multiple repos are handled by running multiple autocoder sessions, each with its own managed checkout and polling loop.
 
-### Suggested local directory layout
+### Local directory layout
 Goal: predictable structure while avoiding leaking local machine details into GitHub comments.
 
-Suggested layout:
+Layout:
 - `~/autocoder/repos/<owner>/<repo>/repo/` (the managed clone)
 - `~/autocoder/repos/<owner>/<repo>/worktrees/issue-<n>/` (per-issue worktrees)
 - `~/autocoder/repos/<owner>/<repo>/state/` (local state, cursors, caches)
@@ -303,7 +286,7 @@ Attachment handling requirements:
 - enforce a per-issue download limit (200MB total).
 
 Allowed attachment types:
-- download any file type that is linked and retrievable via `gh`/HTTP.
+- download any file type that is linked and retrievable through the guarded HTTPS downloader.
 - for safety, only auto-download from GitHub-hosted HTTPS URLs by default (repo host + known GitHub attachment hosts).
 - skip external URLs and ask the human to re-attach via GitHub when needed.
 - never execute attachments.
@@ -316,13 +299,10 @@ Sharing outputs:
 - default: summarize results in issue/PR comments.
 - attach raw files only when they belong in the repo (commit them) or when a repo-specific workflow provides an explicit storage location.
 
-Suggested `.autocoder/` layout:
+`.autocoder/` layout:
 - `.autocoder/artifacts/`: downloaded inputs and output artifacts (local-only).
   - include trusted thread context at `.autocoder/artifacts/trusted-thread-context.json` (runtime-generated, includes the trusted initial issue-body snapshot plus filtered issue-author non-bot comments/reviews).
-- `.autocoder/plan/`: ephemeral working notes and orchestration state (local-only).
-  - `.autocoder/plan/current/notes.md`
-  - `.autocoder/plan/current/notes-index.md`
-  - `.autocoder/plan/current/orchestrator-status.md`
+- `.autocoder/plan/`: the current Codex prompt, output schema, and last structured result (local-only).
 
 ## Terminal logging
 Autocoder should emit structured, high-signal logs to stderr so an operator can understand what it's doing while polling.
@@ -343,7 +323,7 @@ Requirements:
 - autocoder must never print `.env` contents into issue/PR comments or logs.
 - `.env` must never be committed.
 
-Proposed simple behavior:
+Behavior:
 - treat the managed clone's `.env` file (if present) as the canonical source for the repo session.
 - on worktree creation:
   - if `<worktree>/.env` already exists, do nothing.
@@ -373,7 +353,7 @@ Minimum communication behaviors:
   - first line: `[autocoder]`
   - second line: empty
 - when waiting for human input: tag/mention the configured human(s).
-- when starting implementation: post a short plan and checkpoints.
+- when starting material implementation: post a short plan and checkpoints.
 - when opening a PR: link it from the issue and summarize what changed and how it was verified.
 - keep PR title/body aligned with the current state and scope; update them when scope materially changes (avoid spam edits).
 - include an issue-closing reference in the PR body by default:
@@ -387,11 +367,10 @@ Minimum communication behaviors:
 - allowed destructive operations are limited to owned worktree/branch cleanup paths documented in this spec (for example local issue worktree removal and autocoder-managed issue branch deletion on stop/close/merge).
 - keep credentials local; do not print secrets into issue/PR comments.
 - do not commit secrets, tokens, private keys, or confidential internal information into repo files, docs, or notes.
+- codex has unrestricted local command execution and no approval prompts. A worktree is an isolation mechanism for Git changes, not an operating-system security boundary.
+- only allow identities trusted at the level of local code execution, use least-privilege credentials, and run against trusted repositories.
 
 ## Out of scope
 - coordinating multiple target repos from one instance.
 - multiple PRs per issue (unless explicitly allowed later).
 - non-GitHub forges (GitLab, etc).
-
-## Open Questions (to resolve before implementation)
-No blocking items listed.

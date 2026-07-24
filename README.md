@@ -21,6 +21,12 @@ Give teams a simple and reliable way to automate issue handling while keeping hu
 6. You review and merge when ready.
 7. To stop work, remove the `autocoder` label.
 
+## Security model
+
+autocoder runs Codex non-interactively with unrestricted filesystem and network access and with command approvals disabled. A Git worktree isolates branch state; it is not an operating-system sandbox.
+
+Only allow GitHub identities you trust at the same level as local code execution. Use least-privilege GitHub and Codex credentials, run only against trusted repositories, and prefer a dedicated local account or machine. The issue-author allowlist and filtered thread context reduce prompt-injection risk, but they do not create a complete security boundary. See `docs/spec.md` for the full runtime contract and `SECURITY.md` for private vulnerability reporting.
+
 ## Quick start
 
 1. Authenticate local tools.
@@ -160,10 +166,12 @@ autocoder keeps managed runtime state under `~/autocoder/`.
 - `docs/README.md`: canonical index for repository documentation.
 - `docs/spec.md`: canonical behavior and runtime/security contract.
 - `AGENTS.md`: contributor and agent operating guidelines.
+- `SECURITY.md`: vulnerability reporting policy.
+- `LICENSE`: Apache-2.0 license.
 
 <!-- third-party-policy:start -->
 ## Third-Party Code Policy
-This repository allows external-code snapshots for static analysis only. External clones must stay in ephemeral `plan/` locations, be sanitized immediately (`rm -rf .git`, or remove all remotes first if `.git` is temporarily retained), and must never be executed.
+This repository allows external-code snapshots for static analysis only. Keep them in ignored `plan/` locations, remove every clone remote immediately, delete only the verified clone's Git metadata, and never execute the cloned code.
 
 See `docs/untrusted-third-party-repos.md`.
 <!-- third-party-policy:end -->

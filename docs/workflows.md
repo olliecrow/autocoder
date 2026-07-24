@@ -1,14 +1,14 @@
 # Operating Workflow
 
-This document defines how work is tracked so progress compounds without context bloat.
+This document defines how work is tracked without carrying unnecessary task history.
 
 ## Core mode
 - Keep active, disposable notes in `/plan/current/`.
 - Promote durable guidance into `/docs/`.
 - Capture important rationale in the smallest durable place (code comments, tests, or docs).
 - Keep the canonical product/workflow spec in `docs/spec.md` aligned with reality.
-- Keep the workflow spartan: short notes, clear routing, minimal ceremony.
-- Keep an open-source-ready posture across docs/notes: write as if content may become public.
+- Keep notes short, routing clear, and process proportional to the work.
+- Treat docs and notes as public; never include secrets or confidential data.
 
 ## Note routing
 - `/plan/current/notes.md`: running task notes, key findings, and next actions (create as needed).
@@ -19,14 +19,15 @@ This document defines how work is tracked so progress compounds without context 
 - Never place secrets, raw credentials, or confidential internal data in plan notes; use sanitized summaries.
 
 ## Parallel and subagent workflows
-- Use isolated worktrees or dedicated working directories when streams are independent.
-- Track each stream with owner, scope, status, blocker, and last update.
-- Require each stream to produce a concise handoff summary before merge.
+- Parallelize only genuinely separate work that benefits from it.
+- Keep one implementation owner. Give other workers narrow scopes, inputs, acceptance checks, and a synthesis point.
+- Use isolated worktrees only when workers will make independent edits. Shared read-only audits may use one working tree.
+- Create a handoff only when work is staged, interrupted, or transferred.
 
 ## Promotion cycle
 - During execution: write concise notes to `/plan/current/`.
 - At meaningful milestones: consolidate and de-duplicate active notes.
-- Before finishing: promote durable learnings to `/docs/` and trim stale `/plan/` artifacts.
+- Before finishing: promote only durable knowledge to `/docs/` and delete stale or completed `/plan/` artifacts.
 
 ## Stop conditions
 - Stop when acceptance checks pass, risks are documented, and no unresolved blockers remain.

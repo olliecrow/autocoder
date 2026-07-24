@@ -9,11 +9,10 @@ This project allows cloning external repositories for static research only, with
   - `plan/artifacts/external/<source-repo>`
 
 ## Mandatory Sanitization Immediately After Clone
-1. Remove GitHub/git metadata by deleting the repository metadata directory:
-   - `rm -rf .git`
-2. If metadata must be retained briefly for static comparison, remove all remotes immediately first:
-   - `git remote remove origin` (and remove any other remotes)
-3. Persistent project remotes must reference only `github.com/olliecrow/*`.
+1. Resolve and verify the exact `<clone-path>` is an external snapshot under `plan/`, not this repository or another working copy.
+2. Remove every remote from that clone immediately.
+3. Delete only `<clone-path>/.git`, using a recoverable trash operation when available. If Git metadata must be retained briefly for static comparison, keep it remote-free and remove it as soon as the comparison ends.
+4. Persistent remotes in this working copy must match its configured repository owner and target.
 
 ## Hard Safety Constraint
 - Treat all third-party code as untrusted.

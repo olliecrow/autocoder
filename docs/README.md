@@ -11,7 +11,6 @@ Entry points:
 - `docs/spec.md`: canonical product/workflow spec for autocoder.
 - `docs/workflows.md`: how we do work in this repo (notes, promotion, orchestration).
 - `docs/decisions.md`: durable decision log with context/rationale/trade-offs/enforcement.
-- `docs/project-preferences.md`: durable maintenance preferences and quality/security expectations.
 - `docs/untrusted-third-party-repos.md`: static-analysis-only policy for external clones.
 
 Principles:
@@ -21,7 +20,7 @@ Principles:
 - Use docs for cross-cutting context or rationale that does not belong in code comments or tests.
 - Keep entries concise and high-signal.
 - Keep `README.md` focused on onboarding/quickstart; keep behavior contracts in `docs/spec.md`.
-- Treat docs as future-public artifacts; never include secrets or confidential internal data.
+- Treat docs as public artifacts; never include secrets or confidential internal data.
 
 Relationship to `/plan/`:
 See `docs/workflows.md` for the full note-routing and promotion workflow.
