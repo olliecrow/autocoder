@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from autocoder._runner import CmdResult, Runner
 from autocoder import codex as codex_mod
 from autocoder.codex import CodexClient
@@ -34,7 +36,7 @@ class _RecordingRunner(Runner):
         return CmdResult(args=argv, returncode=0, stdout="", stderr="")
 
 
-def test_run_exec_pins_model_reasoning_and_yolo(tmp_path: Path) -> None:
+def test_run_exec_pins_model_reasoning_and_unrestricted_execution(tmp_path: Path) -> None:
     runner = _RecordingRunner(
         payload={
             "decision": "ready",
@@ -65,7 +67,7 @@ def test_run_exec_pins_model_reasoning_and_yolo(tmp_path: Path) -> None:
     assert len(runner.calls) == 1
 
     argv, cwd, input_text, timeout_s, check = runner.calls[0]
-    assert argv[:6] == ["codex", "-a", "never", "-m", "gpt-5.4", "-c"]
+    assert argv[:6] == ["codex", "-a", "never", "-m", "gpt-5.6-sol", "-c"]
     assert 'model_reasoning_effort="high"' in argv
     assert "exec" in argv
     assert "-s" in argv
@@ -81,8 +83,10 @@ def test_read_timeout_s_default_is_ten_hours(monkeypatch) -> None:
     assert codex_mod._read_timeout_s() == 36000
 
 
-def test_read_timeout_s_invalid_falls_back_to_ten_hours(monkeypatch) -> None:
+def test_read_timeout_s_rejects_invalid_values(monkeypatch) -> None:
     monkeypatch.setenv("AUTOCODER_CODEX_TIMEOUT_S", "not-a-number")
-    assert codex_mod._read_timeout_s() == 36000
+    with pytest.raises(ValueError, match="must be an integer"):
+        codex_mod._read_timeout_s()
     monkeypatch.setenv("AUTOCODER_CODEX_TIMEOUT_S", "0")
-    assert codex_mod._read_timeout_s() == 36000
+    with pytest.raises(ValueError, match="greater than zero"):
+        codex_mod._read_timeout_s()

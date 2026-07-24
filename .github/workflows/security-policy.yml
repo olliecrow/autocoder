@@ -12,16 +12,18 @@ permissions:
 jobs:
   security-policy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install gitleaks
         run: |
           set -euo pipefail
-          version="8.30.0"
+          version="8.30.1"
           archive="gitleaks_${version}_linux_x64.tar.gz"
           base_url="https://github.com/gitleaks/gitleaks/releases/download/v${version}"
           curl -sSfL -o "${archive}" "${base_url}/${archive}"
@@ -52,9 +54,12 @@ jobs:
           set -euo pipefail
           tmp_ok="$(mktemp)"
           tmp_bad="$(mktemp)"
+          tmp_source="$(mktemp)"
           printf 'docs: keep /Users/YOU as placeholder only\n' > "${tmp_ok}"
           printf 'fix: %s=%s\n' "token" "abc123456789XYZ" > "${tmp_bad}"
+          printf 'token = _github_auth_token(runtime=runtime)\n' > "${tmp_source}"
           bash scripts/security/check-sensitive-text.sh --context=policy-selftest "${tmp_ok}"
+          bash scripts/security/check-sensitive-text.sh --context=policy-selftest "${tmp_source}"
           if bash scripts/security/check-sensitive-text.sh --context=policy-selftest "${tmp_bad}"; then
             echo "expected policy self-test failure did not occur" >&2
             exit 1

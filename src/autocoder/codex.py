@@ -9,7 +9,7 @@ from typing import Any
 from ._runner import Runner
 
 
-_CODEX_MODEL = "gpt-5.4"
+_CODEX_MODEL = "gpt-5.6-sol"
 _CODEX_REASONING_EFFORT = "high"
 _CODEX_SANDBOX = "danger-full-access"
 _CODEX_APPROVAL_POLICY = "never"
@@ -21,11 +21,11 @@ def _read_timeout_s() -> int:
         return 36000
     try:
         v = int(raw)
-        if v <= 0:
-            return 36000
-        return v
-    except ValueError:
-        return 36000
+    except ValueError as exc:
+        raise ValueError("AUTOCODER_CODEX_TIMEOUT_S must be an integer number of seconds") from exc
+    if v <= 0:
+        raise ValueError("AUTOCODER_CODEX_TIMEOUT_S must be greater than zero")
+    return v
 
 
 _CODEX_TIMEOUT_S = _read_timeout_s()

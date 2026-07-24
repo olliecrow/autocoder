@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from autocoder.state import IssueState, RepoState, load_repo_state, save_repo_state
 
 
@@ -69,3 +71,38 @@ def test_state_migrates_legacy_v1_single_issue(tmp_path: Path) -> None:
             )
         }
     )
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ([], "expected a JSON object"),
+        ({"issues": []}, "field issues"),
+        ({"issues": {"bad": {}}}, "issue key"),
+        ({"issues": {"1": []}}, "issues.1"),
+        ({"issues": {"1": {"branch": 3}}}, "issues.1.branch"),
+        ({"issues": {"1": {"pr": "3"}}}, "issues.1.pr"),
+    ],
+)
+def test_state_rejects_invalid_shapes(tmp_path: Path, payload: object, message: str) -> None:
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        load_repo_state(path)
+
+
+def test_state_save_failure_preserves_previous_file(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "state.json"
+    path.write_text('{"issues": {}}\n', encoding="utf-8")
+
+    def fail_replace(self: Path, target: Path) -> Path:
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="replace failed"):
+        save_repo_state(path, RepoState(issues={1: IssueState(branch="autocoder/issue-1-test")}))
+
+    assert path.read_text(encoding="utf-8") == '{"issues": {}}\n'
+    assert list(tmp_path.glob(".state.json.*.tmp")) == []

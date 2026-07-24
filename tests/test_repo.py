@@ -15,7 +15,9 @@ def test_parse_repo_ssh_url_scplike() -> None:
     assert remote_matches_repo(r, "git@github.com:owner/repo.git")
     assert remote_matches_repo(r, "ssh://git@github.com/owner/repo.git")
     assert remote_matches_repo(r, "https://github.com/owner/repo.git")
+    assert remote_matches_repo(r, "git@github.com:OWNER/REPO.git")
     assert not remote_matches_repo(r, "git@github.com:owner/repo-fork.git")
+    assert not remote_matches_repo(r, "git@evil.example:owner/repo.git")
 
 
 def test_parse_repo_ssh_url_ssh_scheme() -> None:
@@ -25,7 +27,18 @@ def test_parse_repo_ssh_url_ssh_scheme() -> None:
     assert r.name == "repo"
 
 
-@pytest.mark.parametrize("bad", ["", "github.com/owner/repo", "git@github.com:owner/repo/extra.git"])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "",
+        "github.com/owner/repo",
+        "git@github.com:owner/repo/extra.git",
+        "git@github.com:../repo.git",
+        "git@github.com:owner/..git",
+        "git@github.com:owner name/repo.git",
+        "git@evil.example:owner/repo.git",
+    ],
+)
 def test_parse_repo_ssh_url_rejects(bad: str) -> None:
     with pytest.raises(ValueError):
         parse_repo_ssh_url(bad)

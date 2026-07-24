@@ -32,7 +32,7 @@ def test_parse_claim_comment_rejects_non_autocoder_prefix() -> None:
 def test_issue_claimed_by_this_instance_ignores_non_allowlisted_comment_author() -> None:
     rt = SimpleNamespace(
         instance_id="123e4567-e89b-12d3-a456-426614174000",
-        cfg=SimpleNamespace(allowed_github_logins=("olliecrow",)),
+        cfg=SimpleNamespace(allowed_github_logins=("trusted-user",)),
     )
     body = "\n".join(
         [
@@ -51,7 +51,7 @@ def test_issue_claimed_by_this_instance_ignores_non_allowlisted_comment_author()
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder", "autocoder:claimed"),
         comments=(
@@ -71,7 +71,7 @@ def test_issue_claimed_by_this_instance_ignores_non_allowlisted_comment_author()
 def test_issue_claimed_by_this_instance_accepts_allowlisted_comment_author() -> None:
     rt = SimpleNamespace(
         instance_id="123e4567-e89b-12d3-a456-426614174000",
-        cfg=SimpleNamespace(allowed_github_logins=("olliecrow",)),
+        cfg=SimpleNamespace(allowed_github_logins=("trusted-user",)),
     )
     body = "\n".join(
         [
@@ -90,13 +90,13 @@ def test_issue_claimed_by_this_instance_accepts_allowlisted_comment_author() -> 
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder", "autocoder:claimed"),
         comments=(
             IssueComment(
                 id="c1",
-                author="olliecrow",
+                author="trusted-user",
                 body=body,
                 created_at="2026-02-13T00:00:01Z",
                 updated_at="2026-02-13T00:00:01Z",
@@ -110,7 +110,7 @@ def test_issue_claimed_by_this_instance_accepts_allowlisted_comment_author() -> 
 def test_issue_claimed_by_this_instance_uses_latest_claim_comment() -> None:
     rt = SimpleNamespace(
         instance_id="11111111-1111-1111-1111-111111111111",
-        cfg=SimpleNamespace(allowed_github_logins=("olliecrow",)),
+        cfg=SimpleNamespace(allowed_github_logins=("trusted-user",)),
     )
     body_old = "\n".join(
         [
@@ -138,13 +138,13 @@ def test_issue_claimed_by_this_instance_uses_latest_claim_comment() -> None:
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder", "autocoder:claimed"),
         comments=(
             IssueComment(
                 id="c-old",
-                author="olliecrow",
+                author="trusted-user",
                 body=body_old,
                 created_at="2026-02-13T00:00:01Z",
                 updated_at="2026-02-13T00:00:01Z",
@@ -152,7 +152,7 @@ def test_issue_claimed_by_this_instance_uses_latest_claim_comment() -> None:
             ),
             IssueComment(
                 id="c-new",
-                author="olliecrow",
+                author="trusted-user",
                 body=body_new_other,
                 created_at="2026-02-13T00:01:01Z",
                 updated_at="2026-02-13T00:01:01Z",
@@ -166,7 +166,7 @@ def test_issue_claimed_by_this_instance_uses_latest_claim_comment() -> None:
 def test_issue_claimed_by_this_instance_accepts_latest_matching_claim() -> None:
     rt = SimpleNamespace(
         instance_id="11111111-1111-1111-1111-111111111111",
-        cfg=SimpleNamespace(allowed_github_logins=("olliecrow",)),
+        cfg=SimpleNamespace(allowed_github_logins=("trusted-user",)),
     )
     body_old_other = "\n".join(
         [
@@ -194,13 +194,13 @@ def test_issue_claimed_by_this_instance_accepts_latest_matching_claim() -> None:
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder", "autocoder:claimed"),
         comments=(
             IssueComment(
                 id="c-old",
-                author="olliecrow",
+                author="trusted-user",
                 body=body_old_other,
                 created_at="2026-02-13T00:00:01Z",
                 updated_at="2026-02-13T00:00:01Z",
@@ -208,7 +208,7 @@ def test_issue_claimed_by_this_instance_accepts_latest_matching_claim() -> None:
             ),
             IssueComment(
                 id="c-new",
-                author="olliecrow",
+                author="trusted-user",
                 body=body_new,
                 created_at="2026-02-13T00:01:01Z",
                 updated_at="2026-02-13T00:01:01Z",

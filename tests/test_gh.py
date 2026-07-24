@@ -35,7 +35,7 @@ class _RecordingRunner(Runner):
                 "url": "https://example.test/pr/123",
                 "state": "OPEN",
                 "updatedAt": "2026-02-13T00:00:00Z",
-                "author": {"login": "olliecrow"},
+                "author": {"login": "trusted-user"},
                 "headRefName": "branch",
                 "baseRefName": "main",
                 "isCrossRepository": False,

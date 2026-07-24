@@ -21,7 +21,7 @@ def _load_toml(path: Path) -> dict:
     return tomllib.loads(path.read_text(encoding="utf-8"))
 
 
-def _load_login_list(raw: object) -> tuple[str, ...]:
+def _load_login_list(raw: object, *, key: str, source: Path | None) -> tuple[str, ...]:
     if raw is None:
         values: list[object] = []
     elif isinstance(raw, str):
@@ -29,13 +29,15 @@ def _load_login_list(raw: object) -> tuple[str, ...]:
     elif isinstance(raw, list):
         values = raw
     else:
-        values = []
+        location = f" in {source}" if source is not None else ""
+        raise ValueError(f"invalid config key {key}{location}: expected a string or list of strings")
 
     out: list[str] = []
     seen: set[str] = set()
     for value in values:
         if not isinstance(value, str):
-            continue
+            location = f" in {source}" if source is not None else ""
+            raise ValueError(f"invalid config key {key}{location}: expected only strings")
         login = normalize_login(value)
         if not login or login in seen:
             continue
@@ -48,9 +50,21 @@ def load_config(*, global_path: Path, repo_path: Path) -> Config:
     g = _load_toml(global_path)
     r = _load_toml(repo_path)
 
-    mentions = _load_login_list(r.get("mentions", g.get("mentions")))
+    mentions_source = repo_path if "mentions" in r else global_path if "mentions" in g else None
+    allowed_source = (
+        repo_path
+        if "allowed_github_logins" in r
+        else global_path if "allowed_github_logins" in g else None
+    )
+    mentions = _load_login_list(
+        r.get("mentions", g.get("mentions")),
+        key="mentions",
+        source=mentions_source,
+    )
     allowed_github_logins = _load_login_list(
-        r.get("allowed_github_logins", g.get("allowed_github_logins"))
+        r.get("allowed_github_logins", g.get("allowed_github_logins")),
+        key="allowed_github_logins",
+        source=allowed_source,
     )
 
     return Config(

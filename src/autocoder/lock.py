@@ -62,19 +62,23 @@ def acquire_session_lock(
     try:
         _write_exclusive()
     except FileExistsError:
-        existing: dict[str, Any] = {}
         try:
             existing = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            existing = {}
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                f"autocoder session lock is unreadable or malformed: {path}"
+            ) from exc
+        if not isinstance(existing, dict):
+            raise RuntimeError(f"autocoder session lock is malformed: {path}")
 
         ex_pid = existing.get("pid")
-        if isinstance(ex_pid, int) and is_pid_alive(ex_pid):
+        if isinstance(ex_pid, bool) or not isinstance(ex_pid, int) or ex_pid <= 0:
+            raise RuntimeError(f"autocoder session lock has no valid pid: {path}")
+        if is_pid_alive(ex_pid):
             raise RuntimeError(f"autocoder session already running (pid {ex_pid})")
 
-        # Stale lock: remove and retry once.
+        # A valid lock owned by a dead process is stale and safe to replace.
         path.unlink(missing_ok=True)
         _write_exclusive()
 
     return SessionLock(path=path, pid=pid)
-

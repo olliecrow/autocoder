@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import re
 from pathlib import Path
 from typing import Iterable
@@ -53,8 +54,9 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         new_req = super().redirect_request(req, fp, code, msg, headers, newurl)
         if new_req is None:
             return None
-        new_host = (urllib.parse.urlparse(new_req.full_url).hostname or "").lower()
-        if not new_host or new_host not in self._allowed_hosts:
+        new_url = urllib.parse.urlparse(new_req.full_url)
+        new_host = (new_url.hostname or "").lower()
+        if new_url.scheme.lower() != "https" or not new_host or new_host not in self._allowed_hosts:
             # Block redirects to unexpected hosts.
             return None
 
@@ -131,7 +133,7 @@ def download_attachments(
     skipped: list[str] = []
     used = 0
 
-    for idx, url in enumerate(urls, start=1):
+    for url in urls:
         if not is_allowed_attachment_url(url, allowed_hosts=allowed_hosts):
             skipped.append(url)
             continue
@@ -143,8 +145,9 @@ def download_attachments(
         parsed = urllib.parse.urlparse(url)
         leaf = urllib.parse.unquote(Path(parsed.path).name)
         if not leaf:
-            leaf = f"attachment-{idx}"
-        filename = f"{idx:03d}-{_safe_filename(leaf)}"
+            leaf = "attachment"
+        url_digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:16]
+        filename = f"{url_digest}-{_safe_filename(leaf)}"
         out_path = dest_dir / filename
 
         headers = {}
@@ -171,7 +174,12 @@ def download_attachments(
                             continue
 
                 size = 0
-                with out_path.open("wb") as f:
+                try:
+                    output_file = out_path.open("xb")
+                except FileExistsError:
+                    skipped.append(url)
+                    continue
+                with output_file as f:
                     while True:
                         chunk = resp.read(1024 * 1024)
                         if not chunk:
@@ -186,6 +194,7 @@ def download_attachments(
                         f.write(chunk)
 
                 if size == 0:
+                    out_path.unlink(missing_ok=True)
                     skipped.append(url)
                     continue
 

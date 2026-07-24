@@ -106,7 +106,7 @@ def test_maybe_run_codex_skips_pr_create_when_branch_matches_default(tmp_path: P
 
     rt = SimpleNamespace(
         repo=SimpleNamespace(full_name="owner/repo"),
-        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("trusted-user",)),
         default_branch="main",
         managed_dir=tmp_path / "managed",
         state_path=tmp_path / "state.json",
@@ -122,13 +122,13 @@ def test_maybe_run_codex_skips_pr_create_when_branch_matches_default(tmp_path: P
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder", "autocoder:claimed"),
         comments=(
             IssueComment(
                 id="c1",
-                author="olliecrow",
+                author="trusted-user",
                 body="implement merge sync",
                 created_at="2026-02-13T00:00:00Z",
                 updated_at="2026-02-13T00:00:00Z",
@@ -188,10 +188,10 @@ def test_find_or_adopt_pr_rejects_non_allowlisted_pr_author() -> None:
         reviews=(),
     )
     gh = _GhAdoptStub(pr=pr)
-    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)))
+    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(mentions=(), allowed_github_logins=("trusted-user",)))
     issue_state = IssueState(branch="autocoder/issue-1-test", pr=123)
 
-    adopted = _find_or_adopt_pr(rt=rt, issue_state=issue_state, issue_number=1, issue_author="olliecrow")
+    adopted = _find_or_adopt_pr(rt=rt, issue_state=issue_state, issue_number=1, issue_author="trusted-user")
 
     assert adopted is None
     assert issue_state.pr is None
@@ -207,7 +207,7 @@ def test_find_or_adopt_pr_rejects_cross_repository_pr() -> None:
         url="https://example.test/pr/123",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         head_ref_name="branch",
         base_ref_name="main",
         is_cross_repository=True,
@@ -217,10 +217,10 @@ def test_find_or_adopt_pr_rejects_cross_repository_pr() -> None:
         reviews=(),
     )
     gh = _GhAdoptStub(pr=pr)
-    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)))
+    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(mentions=(), allowed_github_logins=("trusted-user",)))
     issue_state = IssueState(branch="autocoder/issue-1-test", pr=123)
 
-    adopted = _find_or_adopt_pr(rt=rt, issue_state=issue_state, issue_number=1, issue_author="olliecrow")
+    adopted = _find_or_adopt_pr(rt=rt, issue_state=issue_state, issue_number=1, issue_author="trusted-user")
 
     assert adopted is None
     assert issue_state.pr is None
@@ -235,7 +235,7 @@ def test_find_or_adopt_pr_rejects_pr_author_mismatch_with_issue_author() -> None
         url="https://example.test/pr/123",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         head_ref_name="branch",
         base_ref_name="main",
         is_cross_repository=False,
@@ -245,7 +245,7 @@ def test_find_or_adopt_pr_rejects_pr_author_mismatch_with_issue_author() -> None
         reviews=(),
     )
     gh = _GhAdoptStub(pr=pr)
-    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)))
+    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(mentions=(), allowed_github_logins=("trusted-user",)))
     issue_state = IssueState(branch="autocoder/issue-1-test", pr=123)
 
     adopted = _find_or_adopt_pr(
@@ -268,13 +268,13 @@ def test_issue_author_attachment_urls_filters_to_issue_author_only() -> None:
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="body https://example.com/body.png",
         labels=("autocoder",),
         comments=(
             IssueComment(
                 id="c1",
-                author="olliecrow",
+                author="trusted-user",
                 body="allowed https://example.com/issue-author-comment.png",
                 created_at="2026-02-13T00:00:00Z",
                 updated_at="2026-02-13T00:00:00Z",
@@ -290,7 +290,7 @@ def test_issue_author_attachment_urls_filters_to_issue_author_only() -> None:
             ),
             IssueComment(
                 id="c3",
-                author="olliecrow",
+                author="trusted-user",
                 body="[autocoder]\nhttps://example.com/bot-comment.png",
                 created_at="2026-02-13T00:00:00Z",
                 updated_at="2026-02-13T00:00:00Z",
@@ -304,7 +304,7 @@ def test_issue_author_attachment_urls_filters_to_issue_author_only() -> None:
         url="https://example.test/pr/2",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         head_ref_name="autocoder/issue-1-test",
         base_ref_name="main",
         is_cross_repository=False,
@@ -313,7 +313,7 @@ def test_issue_author_attachment_urls_filters_to_issue_author_only() -> None:
         comments=(
             PullRequestComment(
                 id="pc1",
-                author="olliecrow",
+                author="trusted-user",
                 body="allowed https://example.com/pr-comment.png",
                 created_at="2026-02-13T00:00:00Z",
                 updated_at="2026-02-13T00:00:00Z",
@@ -331,7 +331,7 @@ def test_issue_author_attachment_urls_filters_to_issue_author_only() -> None:
         reviews=(
             PullRequestReview(
                 id="r1",
-                author="olliecrow",
+                author="trusted-user",
                 body="allowed https://example.com/pr-review.png",
                 submitted_at="2026-02-13T00:00:00Z",
                 state="COMMENTED",
@@ -349,7 +349,7 @@ def test_issue_author_attachment_urls_filters_to_issue_author_only() -> None:
     urls = _issue_author_attachment_urls(
         issue=issue,
         pr=pr,
-        allowed_logins=("olliecrow",),
+        allowed_logins=("trusted-user",),
     )
 
     assert urls == (
@@ -368,13 +368,13 @@ def test_sync_issue_author_attachments_downloads_once_and_reuses_manifest(tmp_pa
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder",),
         comments=(
             IssueComment(
                 id="c1",
-                author="olliecrow",
+                author="trusted-user",
                 body="https://example.com/body.png",
                 created_at="2026-02-13T00:00:00Z",
                 updated_at="2026-02-13T00:00:00Z",
@@ -384,7 +384,7 @@ def test_sync_issue_author_attachments_downloads_once_and_reuses_manifest(tmp_pa
     )
     rt = SimpleNamespace(
         repo=SimpleNamespace(host="github.com"),
-        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("trusted-user",)),
         gh=SimpleNamespace(),
         runner=SimpleNamespace(),
     )
@@ -427,13 +427,13 @@ def test_sync_issue_author_attachments_prunes_manifest_when_url_removed(tmp_path
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder",),
         comments=(
             IssueComment(
                 id="c1",
-                author="olliecrow",
+                author="trusted-user",
                 body="https://example.com/body.png",
                 created_at="2026-02-13T00:00:00Z",
                 updated_at="2026-02-13T00:00:00Z",
@@ -447,13 +447,13 @@ def test_sync_issue_author_attachments_prunes_manifest_when_url_removed(tmp_path
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:01:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder",),
         comments=(
             IssueComment(
                 id="c1",
-                author="olliecrow",
+                author="trusted-user",
                 body="",
                 created_at="2026-02-13T00:01:00Z",
                 updated_at="2026-02-13T00:01:00Z",
@@ -463,7 +463,7 @@ def test_sync_issue_author_attachments_prunes_manifest_when_url_removed(tmp_path
     )
     rt = SimpleNamespace(
         repo=SimpleNamespace(host="github.com"),
-        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("trusted-user",)),
         gh=SimpleNamespace(),
         runner=SimpleNamespace(),
     )
@@ -502,7 +502,7 @@ def test_sync_issue_author_attachments_does_not_delete_files_outside_artifacts(t
     manifest_path.write_text(
         (
             '{\n'
-            '  "issue_author": "olliecrow",\n'
+            '  "issue_author": "trusted-user",\n'
             '  "issue_number": 1,\n'
             '  "downloaded": [\n'
             '    {"url": "https://example.com/old.png", "path": "../outside.txt", "size_bytes": 4}\n'
@@ -518,14 +518,14 @@ def test_sync_issue_author_attachments_does_not_delete_files_outside_artifacts(t
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder",),
         comments=(),
     )
     rt = SimpleNamespace(
         repo=SimpleNamespace(host="github.com"),
-        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("trusted-user",)),
         gh=SimpleNamespace(),
         runner=SimpleNamespace(),
     )
@@ -556,7 +556,7 @@ def test_sync_issue_author_attachments_keeps_existing_rows_when_pr_context_fetch
     manifest_path.write_text(
         (
             '{\n'
-            '  "issue_author": "olliecrow",\n'
+            '  "issue_author": "trusted-user",\n'
             '  "issue_number": 1,\n'
             '  "downloaded": [\n'
             '    {"url": "https://example.com/pr-note.png", "path": ".autocoder/artifacts/pr-note.png", "size_bytes": 3}\n'
@@ -573,7 +573,7 @@ def test_sync_issue_author_attachments_keeps_existing_rows_when_pr_context_fetch
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder",),
         comments=(),
@@ -584,7 +584,7 @@ def test_sync_issue_author_attachments_keeps_existing_rows_when_pr_context_fetch
         url="https://example.test/pr/2",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         head_ref_name="autocoder/issue-1-test",
         base_ref_name="main",
         is_cross_repository=False,
@@ -608,7 +608,7 @@ def test_sync_issue_author_attachments_keeps_existing_rows_when_pr_context_fetch
 
     rt = SimpleNamespace(
         repo=SimpleNamespace(host="github.com"),
-        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("trusted-user",)),
         gh=SimpleNamespace(view_pr=_raise_view_pr),
         runner=SimpleNamespace(),
     )
@@ -636,13 +636,13 @@ def test_prepare_trusted_thread_context_filters_to_issue_author_non_bot_content(
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="body must not be treated as instruction",
         labels=("autocoder",),
         comments=(
             IssueComment(
                 id="c1",
-                author="olliecrow",
+                author="trusted-user",
                 body="trusted issue comment",
                 created_at="2026-02-13T00:00:00Z",
                 updated_at="2026-02-13T00:00:00Z",
@@ -658,7 +658,7 @@ def test_prepare_trusted_thread_context_filters_to_issue_author_non_bot_content(
             ),
             IssueComment(
                 id="c3",
-                author="olliecrow",
+                author="trusted-user",
                 body="  [AutoCoder]\n\nbot status",
                 created_at="2026-02-13T00:00:00Z",
                 updated_at="2026-02-13T00:00:00Z",
@@ -672,7 +672,7 @@ def test_prepare_trusted_thread_context_filters_to_issue_author_non_bot_content(
         url="https://example.test/pr/2",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         head_ref_name="autocoder/issue-1-test",
         base_ref_name="main",
         is_cross_repository=False,
@@ -681,7 +681,7 @@ def test_prepare_trusted_thread_context_filters_to_issue_author_non_bot_content(
         comments=(
             PullRequestComment(
                 id="pc1",
-                author="olliecrow",
+                author="trusted-user",
                 body="trusted pr comment",
                 created_at="2026-02-13T00:00:00Z",
                 updated_at="2026-02-13T00:00:00Z",
@@ -697,7 +697,7 @@ def test_prepare_trusted_thread_context_filters_to_issue_author_non_bot_content(
             ),
             PullRequestComment(
                 id="pc3",
-                author="olliecrow",
+                author="trusted-user",
                 body="[autocoder]\n\nbot output",
                 created_at="2026-02-13T00:00:00Z",
                 updated_at="2026-02-13T00:00:00Z",
@@ -707,7 +707,7 @@ def test_prepare_trusted_thread_context_filters_to_issue_author_non_bot_content(
         reviews=(
             PullRequestReview(
                 id="r1",
-                author="olliecrow",
+                author="trusted-user",
                 body="trusted pr review",
                 submitted_at="2026-02-13T00:00:00Z",
                 state="COMMENTED",
@@ -721,7 +721,7 @@ def test_prepare_trusted_thread_context_filters_to_issue_author_non_bot_content(
             ),
             PullRequestReview(
                 id="r3",
-                author="olliecrow",
+                author="trusted-user",
                 body=" [autocoder]\n\nbot review",
                 submitted_at="2026-02-13T00:00:00Z",
                 state="COMMENTED",
@@ -730,7 +730,7 @@ def test_prepare_trusted_thread_context_filters_to_issue_author_non_bot_content(
     )
 
     rt = SimpleNamespace(
-        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("olliecrow",)),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("trusted-user",)),
         gh=SimpleNamespace(view_pr=lambda *, number, include_comments: pr),
     )
     out_path = _prepare_trusted_thread_context(
@@ -742,7 +742,7 @@ def test_prepare_trusted_thread_context_filters_to_issue_author_non_bot_content(
     )
     payload = json.loads(out_path.read_text(encoding="utf-8"))
 
-    assert payload["issue_author"] == "olliecrow"
+    assert payload["issue_author"] == "trusted-user"
     assert payload["issue"]["initial_body"] == "captured initial body"
     assert [c["id"] for c in payload["issue"]["comments"]] == ["c1"]
     assert [c["id"] for c in payload["pr"]["comments"]] == ["pc1"]

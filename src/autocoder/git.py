@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import shutil
 from typing import Iterable, Sequence
@@ -159,4 +160,17 @@ def ensure_worktree_env(*, managed_clone_dir: Path, worktree_dir: Path) -> None:
     dst = worktree_dir / ".env"
     if dst.exists() or not src.exists():
         return
-    shutil.copyfile(src, dst)
+
+    # Never make a secret-bearing .env file more permissive than owner read/write.
+    mode = src.stat().st_mode & 0o600 or 0o600
+    try:
+        fd = os.open(dst, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode)
+    except FileExistsError:
+        return
+    try:
+        with src.open("rb") as source, os.fdopen(fd, "wb") as destination:
+            shutil.copyfileobj(source, destination)
+        os.chmod(dst, mode)
+    except BaseException:
+        dst.unlink(missing_ok=True)
+        raise

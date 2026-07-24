@@ -40,3 +40,33 @@ def test_lock_replaces_stale_pid(tmp_path: Path) -> None:
     data = json.loads(p.read_text(encoding="utf-8"))
     assert data["pid"] == 123
 
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "",
+        '{"pid":',
+        "[]",
+        "{}",
+        '{"pid": "999"}',
+        '{"pid": 0}',
+    ],
+)
+def test_lock_rejects_malformed_existing_file(tmp_path: Path, content: str) -> None:
+    path = tmp_path / "session.lock"
+    path.write_text(content, encoding="utf-8")
+
+    with pytest.raises(RuntimeError):
+        acquire_session_lock(path=path, pid=123, is_pid_alive=lambda _: False)
+
+    assert path.read_text(encoding="utf-8") == content
+
+
+def test_release_does_not_delete_another_owners_lock(tmp_path: Path) -> None:
+    path = tmp_path / "session.lock"
+    lock = acquire_session_lock(path=path, pid=123, is_pid_alive=lambda _: False)
+    path.write_text('{"pid": 456}\n', encoding="utf-8")
+
+    lock.release()
+
+    assert path.exists()

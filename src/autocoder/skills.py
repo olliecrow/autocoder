@@ -13,11 +13,19 @@ class LocalSkill:
     path: Path
 
 
-def _candidate_skill_roots(*, env: Mapping[str, str] | None = None, home: Path | None = None) -> tuple[Path, ...]:
+def _candidate_skill_roots(
+    *,
+    env: Mapping[str, str] | None = None,
+    home: Path | None = None,
+    project_root: Path | None = None,
+) -> tuple[Path, ...]:
     env_map = os.environ if env is None else env
     home_dir = Path.home() if home is None else home
 
     roots: list[Path] = []
+
+    if project_root is not None:
+        roots.append(project_root / ".agents" / "skills")
 
     codex_home = (env_map.get("CODEX_HOME") or "").strip()
     if codex_home:
@@ -69,12 +77,13 @@ def discover_local_skills(
     *,
     env: Mapping[str, str] | None = None,
     home: Path | None = None,
+    project_root: Path | None = None,
     max_scan: int = 400,
 ) -> tuple[LocalSkill, ...]:
     found: list[LocalSkill] = []
     seen_paths: set[str] = set()
 
-    for root in _candidate_skill_roots(env=env, home=home):
+    for root in _candidate_skill_roots(env=env, home=home, project_root=project_root):
         if not root.is_dir():
             continue
         for skill_file in sorted(root.rglob("SKILL.md")):
@@ -97,12 +106,7 @@ def discover_local_skills(
 
 def render_skills_for_prompt(skills: tuple[LocalSkill, ...], *, max_items: int = 200) -> str:
     if not skills:
-        return "\n".join(
-            [
-                "- Local skills are assumed to exist on this machine.",
-                "- If discovery appears empty, inspect and use `~/.codex/skills` (and `$CODEX_HOME/skills` if set).",
-            ]
-        )
+        return "- No project or local skills were discovered for this run."
 
     lines: list[str] = []
     for s in skills[:max_items]:

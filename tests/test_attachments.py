@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from types import SimpleNamespace
+import urllib.request
 
-from autocoder.attachments import allowed_attachment_hosts_for_repo_host, download_attachments, extract_urls, is_allowed_attachment_url
+from autocoder.attachments import (
+    _SafeRedirectHandler,
+    allowed_attachment_hosts_for_repo_host,
+    download_attachments,
+    extract_urls,
+    is_allowed_attachment_url,
+)
+from autocoder.gh import IssueComment, IssueDetail
+from autocoder.run import _sync_issue_author_attachments
 
 
 def test_extract_urls_dedup_and_trim() -> None:
@@ -42,3 +53,190 @@ def test_download_attachments_skips_disallowed_without_network(tmp_path: Path) -
     )
     assert res.downloaded == ()
     assert res.skipped_urls == ("http://example.com/a.txt", "https://example.com/b.txt")
+
+
+class _Response:
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+        self._read = False
+        self.headers: dict[str, str] = {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+    def read(self, size: int = -1) -> bytes:
+        if self._read:
+            return b""
+        self._read = True
+        return self._body
+
+
+class _Opener:
+    def __init__(self, responses: dict[str, bytes]) -> None:
+        self._responses = responses
+
+    def open(self, request: urllib.request.Request, *, timeout: float) -> _Response:
+        return _Response(self._responses[request.full_url])
+
+
+def test_redirect_handler_requires_https_and_strips_cross_host_auth() -> None:
+    handler = _SafeRedirectHandler(allowed_hosts={"github.com", "objects.githubusercontent.com"})
+    request = urllib.request.Request(
+        "https://github.com/source",
+        headers={"Authorization": "token example"},
+    )
+
+    assert (
+        handler.redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            "http://github.com/insecure",
+        )
+        is None
+    )
+
+    cross_host = handler.redirect_request(
+        request,
+        None,
+        302,
+        "Found",
+        {},
+        "https://objects.githubusercontent.com/file",
+    )
+    assert cross_host is not None
+    assert cross_host.get_header("Authorization") is None
+
+    same_host = handler.redirect_request(
+        request,
+        None,
+        302,
+        "Found",
+        {},
+        "https://github.com/destination",
+    )
+    assert same_host is not None
+    assert same_host.get_header("Authorization") == "token example"
+
+
+def test_download_attachments_uses_distinct_names_and_removes_empty_files(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    first_url = "https://github.com/one/shared.txt"
+    second_url = "https://github.com/two/shared.txt"
+    empty_url = "https://github.com/empty.txt"
+    opener = _Opener(
+        {
+            first_url: b"first",
+            second_url: b"second",
+            empty_url: b"",
+        }
+    )
+    monkeypatch.setattr("autocoder.attachments.urllib.request.build_opener", lambda handler: opener)
+
+    result = download_attachments(
+        urls=[first_url, second_url, empty_url],
+        dest_dir=tmp_path,
+        auth_token=None,
+        total_cap_bytes=1024,
+        allowed_hosts={"github.com"},
+    )
+
+    assert len(result.downloaded) == 2
+    assert result.downloaded[0].path != result.downloaded[1].path
+    assert {item.path.read_bytes() for item in result.downloaded} == {b"first", b"second"}
+    assert result.skipped_urls == (empty_url,)
+    assert len(list(tmp_path.iterdir())) == 2
+
+
+def test_download_attachments_removes_partial_file_when_cap_is_exceeded(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    url = "https://github.com/large.txt"
+    opener = _Opener({url: b"larger than cap"})
+    monkeypatch.setattr("autocoder.attachments.urllib.request.build_opener", lambda handler: opener)
+
+    result = download_attachments(
+        urls=[url],
+        dest_dir=tmp_path,
+        auth_token=None,
+        total_cap_bytes=4,
+        allowed_hosts={"github.com"},
+    )
+
+    assert result.downloaded == ()
+    assert result.skipped_urls == (url,)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_attachment_sync_applies_cap_to_existing_files(tmp_path: Path, monkeypatch) -> None:
+    old_url = "https://github.com/old.txt"
+    new_url = "https://github.com/new.txt"
+    worktree = tmp_path / "worktree"
+    artifacts = worktree / ".autocoder" / "artifacts"
+    artifacts.mkdir(parents=True)
+    existing = artifacts / "existing.txt"
+    existing.write_bytes(b"1234")
+    manifest_path = artifacts / "attachments-manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "downloaded": [
+                    {
+                        "url": old_url,
+                        "path": ".autocoder/artifacts/existing.txt",
+                        "size_bytes": 4,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    issue = IssueDetail(
+        number=1,
+        title="attachments",
+        url="https://github.com/owner/repo/issues/1",
+        state="OPEN",
+        updated_at="2026-01-01T00:00:00Z",
+        author="trusted-user",
+        body="",
+        labels=("autocoder",),
+        comments=(
+            IssueComment(
+                id="1",
+                author="trusted-user",
+                body=f"{old_url}\n{new_url}",
+                created_at="2026-01-01T00:00:00Z",
+                updated_at="2026-01-01T00:00:00Z",
+                url="",
+            ),
+        ),
+    )
+    runtime = SimpleNamespace(
+        cfg=SimpleNamespace(allowed_github_logins=("trusted-user",)),
+        repo=SimpleNamespace(host="github.com"),
+    )
+    monkeypatch.setattr("autocoder.run._ATTACHMENT_TOTAL_CAP_BYTES", 4)
+
+    def unexpected_download(**kwargs):
+        raise AssertionError("download should not run when existing files consume the cap")
+
+    monkeypatch.setattr("autocoder.run.download_attachments", unexpected_download)
+
+    _sync_issue_author_attachments(
+        rt=runtime,
+        issue=issue,
+        pr=None,
+        worktree_dir=worktree,
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["downloaded"][0]["size_bytes"] == 4
+    assert manifest["skipped_urls"] == [new_url]

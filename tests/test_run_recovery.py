@@ -8,7 +8,7 @@ import autocoder.run as runmod
 from autocoder.security import issue_allowed_human_activity_digest
 from autocoder.state import IssueState, RepoState
 
-ALLOWED = ("olliecrow",)
+ALLOWED = ("trusted-user",)
 
 
 class _GitStub:
@@ -72,7 +72,7 @@ def test_run_one_iteration_triggers_codex_for_local_recovery(tmp_path: Path, mon
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder", "autocoder:claimed"),
         comments=(),
@@ -129,7 +129,7 @@ def test_run_one_iteration_posts_quick_ack_for_issue_author_update(tmp_path: Pat
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:10:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="please update behavior",
         labels=("autocoder", "autocoder:claimed"),
         comments=(),
@@ -188,7 +188,7 @@ def test_run_one_iteration_skips_codex_for_later_issue_body_edit_only(tmp_path: 
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:10:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="edited body only",
         labels=("autocoder", "autocoder:claimed"),
         comments=(),
@@ -217,7 +217,7 @@ def test_run_one_iteration_skips_codex_for_later_issue_body_edit_only(tmp_path: 
                 last_seen_pr_updated_at=None,
                 last_seen_default_branch_sha=default_sha,
                 last_seen_allowed_issue_digest=issue_allowed_human_activity_digest(
-                    issue_author="olliecrow",
+                    issue_author="trusted-user",
                     allowed_logins=ALLOWED,
                     comments=[],
                     trusted_issue_body="initial body snapshot",
@@ -254,7 +254,7 @@ def test_run_one_iteration_triggers_codex_for_initial_issue_body_snapshot_only(
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:10:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="initial trusted body",
         labels=("autocoder", "autocoder:claimed"),
         comments=(),
@@ -309,7 +309,7 @@ def test_run_one_iteration_skips_codex_for_issue_author_comment_edit_only(tmp_pa
     comments_before = (
         IssueComment(
             id="c1",
-            author="olliecrow",
+            author="trusted-user",
             body="initial instruction",
             created_at="2026-02-13T00:00:00Z",
             updated_at="2026-02-13T00:00:00Z",
@@ -319,7 +319,7 @@ def test_run_one_iteration_skips_codex_for_issue_author_comment_edit_only(tmp_pa
     comments_after = (
         IssueComment(
             id="c1",
-            author="olliecrow",
+            author="trusted-user",
             body="edited instruction text",
             created_at="2026-02-13T00:00:00Z",
             updated_at="2026-02-13T00:10:00Z",
@@ -332,7 +332,7 @@ def test_run_one_iteration_skips_codex_for_issue_author_comment_edit_only(tmp_pa
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:10:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder", "autocoder:claimed"),
         comments=comments_after,
@@ -360,7 +360,7 @@ def test_run_one_iteration_skips_codex_for_issue_author_comment_edit_only(tmp_pa
                 last_seen_pr_updated_at=None,
                 last_seen_default_branch_sha=default_sha,
                 last_seen_allowed_issue_digest=issue_allowed_human_activity_digest(
-                    issue_author="olliecrow",
+                    issue_author="trusted-user",
                     allowed_logins=ALLOWED,
                     comments=[(c.id, c.author, c.updated_at, c.body) for c in comments_before],
                 ),
@@ -393,7 +393,7 @@ def test_run_one_iteration_retries_when_issue_author_comment_arrives_during_code
     comments_before = (
         IssueComment(
             id="c1",
-            author="olliecrow",
+            author="trusted-user",
             body="first instruction",
             created_at="2026-02-13T00:00:00Z",
             updated_at="2026-02-13T00:00:00Z",
@@ -403,7 +403,7 @@ def test_run_one_iteration_retries_when_issue_author_comment_arrives_during_code
     comments_after = (
         IssueComment(
             id="c1",
-            author="olliecrow",
+            author="trusted-user",
             body="first instruction",
             created_at="2026-02-13T00:00:00Z",
             updated_at="2026-02-13T00:00:00Z",
@@ -411,7 +411,7 @@ def test_run_one_iteration_retries_when_issue_author_comment_arrives_during_code
         ),
         IssueComment(
             id="c2",
-            author="olliecrow",
+            author="trusted-user",
             body="second instruction during run",
             created_at="2026-02-13T00:01:00Z",
             updated_at="2026-02-13T00:01:00Z",
@@ -424,7 +424,7 @@ def test_run_one_iteration_retries_when_issue_author_comment_arrives_during_code
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:00:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder", "autocoder:claimed"),
         comments=comments_before,
@@ -435,7 +435,7 @@ def test_run_one_iteration_retries_when_issue_author_comment_arrives_during_code
         url="https://example.test/issues/1",
         state="OPEN",
         updated_at="2026-02-13T00:01:00Z",
-        author="olliecrow",
+        author="trusted-user",
         body="",
         labels=("autocoder", "autocoder:claimed"),
         comments=comments_after,
@@ -485,7 +485,7 @@ def test_run_one_iteration_retries_when_issue_author_comment_arrives_during_code
                 last_seen_pr_updated_at=None,
                 last_seen_default_branch_sha=default_sha,
                 last_seen_allowed_issue_digest=issue_allowed_human_activity_digest(
-                    issue_author="olliecrow",
+                    issue_author="trusted-user",
                     allowed_logins=ALLOWED,
                     comments=[],
                 ),
@@ -514,7 +514,7 @@ def test_run_one_iteration_retries_when_issue_author_comment_arrives_during_code
     assert seen_triggers == [("issue_updated",), ("issue_updated",)]
     assert state.issues[1].last_seen_issue_updated_at == issue_after.updated_at
     assert state.issues[1].last_seen_allowed_issue_digest == issue_allowed_human_activity_digest(
-        issue_author="olliecrow",
+        issue_author="trusted-user",
         allowed_logins=ALLOWED,
         comments=[(c.id, c.author, c.updated_at, c.body) for c in comments_after],
     )

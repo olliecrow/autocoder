@@ -50,6 +50,24 @@ def test_discover_local_skills_falls_back_to_home_dot_codex(tmp_path: Path) -> N
     assert skills[0].description == "Create plans."
 
 
+def test_discover_local_skills_includes_project_skills(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    skill = project_root / ".agents" / "skills" / "release" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text(
+        "---\nname: release\ndescription: Publish a verified release.\n---\n",
+        encoding="utf-8",
+    )
+
+    skills = discover_local_skills(
+        env={},
+        home=tmp_path / "home",
+        project_root=project_root,
+    )
+
+    assert tuple(item.name for item in skills) == ("release",)
+
+
 def test_render_skills_for_prompt_limits_output() -> None:
     skills = tuple(
         LocalSkill(
@@ -67,8 +85,7 @@ def test_render_skills_for_prompt_limits_output() -> None:
     assert "... plus 1 more locally available skills" in out
 
 
-def test_render_skills_for_prompt_assumes_local_skills_when_empty() -> None:
+def test_render_skills_for_prompt_reports_empty_catalog() -> None:
     out = render_skills_for_prompt(())
 
-    assert "Local skills are assumed to exist on this machine." in out
-    assert "~/.codex/skills" in out
+    assert out == "- No project or local skills were discovered for this run."
