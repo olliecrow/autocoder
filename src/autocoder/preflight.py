@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
+import re
 import shutil
 import sys
 from dataclasses import dataclass
 from typing import TextIO
 
 from ._runner import CommandTimeout, Runner, SubprocessRunner
+from .config import load_config
 from .paths import (
     global_config_path,
     managed_clone_dir,
@@ -20,6 +23,7 @@ class CheckResult:
     name: str
     ok: bool
     detail: str
+    warning: bool = False
 
 
 def _first_line(text: str) -> str:
@@ -64,14 +68,44 @@ def _doctor_checks(*, repo: RepoSpec, runner: Runner) -> list[CheckResult]:
     checks.append(_tool_check("gh"))
     checks.append(_tool_check("codex"))
 
-    checks.append(
-        _run_command_check(
-            runner=runner,
-            name="gh auth status",
-            argv=["gh", "auth", "status"],
-            pass_detail="authenticated",
-        )
-    )
+    try:
+        cfg = load_config(global_path=global_config_path(), repo_path=repo_config_path(repo))
+        ok = bool(cfg.allowed_github_logins)
+        detail = f"allowed logins: {', '.join(cfg.allowed_github_logins)}; mentions: {', '.join(cfg.mentions)}"
+        checks.append(CheckResult("config", ok, detail if ok else "set allowed_github_logins in config"))
+    except (ValueError, OSError):
+        checks.append(CheckResult("config", False, "invalid config; check TOML and login lists"))
+
+    try:
+        auth = runner.run(["gh", "auth", "status"], check=False, timeout_s=20)
+        checks.append(CheckResult("gh auth status", auth.returncode == 0, "authenticated" if auth.returncode == 0 else "authentication check failed"))
+        scopes = re.findall(r"Token scopes:\s*([^\n]+)", auth.stdout + auth.stderr)
+        broad = any(scope in {"repo", "workflow", "admin:org", "delete_repo"}
+                    for line in scopes for scope in re.findall(r"[a-zA-Z_:]+", line))
+        checks.append(CheckResult("token scopes", True,
+                                  "broad scopes; use a single-repo token (README Recommended isolation)" if broad else "fine-grained or not reported",
+                                  warning=broad))
+    except Exception:
+        checks.append(CheckResult("gh auth status", False, "authentication check failed"))
+
+    try:
+        result = runner.run(["gh", "repo", "view", repo.full_name, "--json", "hasIssuesEnabled,viewerPermission"],
+                            check=False, timeout_s=20)
+        settings = json.loads(result.stdout)
+        ok = result.returncode == 0 and settings.get("hasIssuesEnabled") is True and settings.get("viewerPermission") in {"WRITE", "MAINTAIN", "ADMIN"}
+        checks.append(CheckResult("repository settings", ok, "issues enabled and write permission" if ok else "enable issues and grant repo write permission"))
+    except Exception:
+        checks.append(CheckResult("repository settings", False, "unable to read repository settings"))
+
+    for key in ("user.name", "user.email"):
+        try:
+            clone = managed_clone_dir(repo)
+            args = ["git", "config", "--get", key] if clone.exists() else ["git", "config", "--global", "--get", key]
+            result = runner.run(args, cwd=clone if clone.exists() else None, check=False, timeout_s=20)
+            ok = result.returncode == 0 and bool(result.stdout.strip())
+            checks.append(CheckResult(f"git identity: {key}", ok, "configured" if ok else "not configured"))
+        except Exception:
+            checks.append(CheckResult(f"git identity: {key}", False, "unable to check"))
     checks.append(
         _run_command_check(
             runner=runner,
@@ -109,7 +143,7 @@ def run_doctor(*, repo_ssh_url: str, runner: Runner | None = None, out: TextIO =
     print(file=out)
 
     for check in checks:
-        state = "ok" if check.ok else "fail"
+        state = "warn" if check.warning else "ok" if check.ok else "fail"
         print(f"[{state}] {check.name} - {check.detail}", file=out)
         if not check.ok:
             all_ok = False

@@ -410,3 +410,7 @@ Post the claim comment before adding the claimed label, so a failed comment cann
 ## Local lock and bootstrap
 
 Use a kernel file lock for the session lifetime. Keep the lock file after release; its content is diagnostic only. A stale PID never blocks startup. Discover the fallback default branch from the local `origin/HEAD` symbolic ref. Create missing labels only; preserve existing colors and descriptions.
+
+## Doctor setup checks
+
+Doctor fails on invalid or empty trust config, disabled issues, insufficient repo permission, or missing Git identity. It warns on classic broad token scopes without printing tokens or identity values. Warnings do not change the exit status. All checks are read-only.
