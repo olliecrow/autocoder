@@ -132,15 +132,15 @@ References:
 `src/autocoder/_runner.py`, `src/autocoder/codex.py`, `src/autocoder/run.py`, `docs/spec.md`
 
 Decision:
-Do not mark the default-branch SHA as "seen" for an issue after a merge-sync-triggered Codex run unless the issue branch actually contains `origin/<default-branch>`.
+Make one merge-sync attempt per default-branch SHA. If the issue branch is still behind after the run, post one notice and wait for new issue-author input or a newer default-branch SHA.
 Context:
-If a default-branch sync run fails to merge (conflicts, errors, or no push), updating the cursor would incorrectly suppress further merge-sync attempts.
+An earlier rule kept the cursor back until the merge landed. When a merge could not land (sandboxed Codex cannot write Git metadata, or a conflict stayed unresolved), every 60-second poll started another full Codex run.
 Rationale:
-Ensures merge-sync remains self-healing: the `default_branch_advanced` trigger keeps firing until the issue branch is genuinely up to date.
+A bounded attempt plus a visible notice keeps humans in charge of hard conflicts without unbounded worker runs.
 Trade-offs:
-May cause repeated merge-sync attempts on persistent conflicts until a human resolves the conflict or opts out.
+A conflict that Codex does not resolve waits for a human (fix the branch, or reply `retrigger`).
 Enforcement:
-After a Codex run triggered by `default_branch_advanced`, autocoder checks ancestry (`origin/<default-branch>` is ancestor of issue branch) before advancing `last_seen_default_branch_sha`.
+After every run, autocoder sets `last_seen_default_branch_sha` to the fetched SHA and checks ancestry (`origin/<default-branch>` is an ancestor of the issue branch); if not, it posts a `default-sync:<sha>` notice once.
 References:
 `src/autocoder/run.py`
 
@@ -184,15 +184,15 @@ References:
 `src/autocoder/run.py`, `src/autocoder/git.py`, `tests/test_run_recovery.py`, `docs/spec.md`
 
 Decision:
-Codex owns issue-branch merge execution; autocoder runtime only detects/schedules merge-sync work.
+autocoder runs every Git write (fetch, merge, commit, push) outside the Codex sandbox. Codex resolves conflicted file contents and verifies.
 Context:
-Merge behavior must stay adaptable to per-repo workflows and conflict handling, while still enforcing regular sync with the default branch.
+The default `workspace-write` sandbox has no network and keeps Git metadata read-only, so Codex cannot fetch, merge, commit, or push there.
 Rationale:
-Keeping merge execution in codex avoids brittle fixed-command runtime behavior and lets codex resolve merge conflicts with full repository context.
+One owner for Git writes works the same in both sandbox modes, and keeps the push guard in front of every push.
 Trade-offs:
-Relies on prompt/runtime contracts and codex behavior quality; poor codex runs may require retrigger or human clarification.
+Codex cannot make several checkpoint commits in one run; autocoder makes one commit per `ready` run.
 Enforcement:
-Runtime triggers codex when default branch advances or local recovery is needed, and prompt policy requires codex to perform merge-sync and recovery first.
+Before each run, autocoder merges `origin/<default-branch>` into a clean worktree (`git merge --no-edit`; conflicts and `MERGE_HEAD` stay for Codex). The prompt forbids Git writes. After `ready`, `git add -A` and `git commit` complete any merge, then autocoder pushes.
 References:
 `src/autocoder/run.py`, `tests/test_run_prompt.py`, `docs/spec.md`
 

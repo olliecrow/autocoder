@@ -6,7 +6,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from ._runner import Runner
+from ._runner import CommandError, Runner
 
 
 @dataclass(frozen=True)
@@ -112,6 +112,20 @@ class GitClient:
             git_path = cwd / git_path
 
         return (git_path / "rebase-apply").exists() or (git_path / "rebase-merge").exists()
+
+    def merge(self, *, cwd: Path, ref: str) -> bool:
+        """
+        Merge `ref` into the current branch without rewriting history.
+
+        Return False when the merge stopped on conflicts (left in place for resolution).
+        """
+        res = self._runner.run(["git", "merge", "--no-edit", ref], cwd=cwd, check=False)
+        if res.returncode == 0:
+            return True
+        conflicted = self._runner.run(["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"], cwd=cwd, check=False)
+        if conflicted.returncode == 0:
+            return False
+        raise CommandError(result=res)
 
     def add_all(self, *, cwd: Path) -> None:
         self._git(["add", "-A"], cwd=cwd)

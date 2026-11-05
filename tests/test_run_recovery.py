@@ -42,6 +42,12 @@ class _GitStub:
     def current_branch(self, *, cwd: Path) -> str:
         return self._branch
 
+    def is_ancestor(self, *, cwd: Path, ancestor: str, descendant: str) -> bool:
+        return True
+
+    def merge(self, *, cwd: Path, ref: str) -> bool:
+        raise AssertionError("unexpected merge")
+
 
 class _GhStub:
     def __init__(self, *, issue: IssueDetail) -> None:
@@ -623,3 +629,38 @@ def test_local_changes_left_by_completed_run_wait_for_author_input(tmp_path, mon
     git._dirty_status = ''
     runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
     assert state.issues[1].local_changes_after_run is False
+
+
+def test_default_branch_merge_sync_runs_once_per_default_sha(tmp_path, monkeypatch):
+    from dataclasses import replace
+    issue = IssueDetail(1, 't', '', 'OPEN', 'now', 'trusted-user', '', ('autocoder', 'autocoder:claimed'), ())
+    branch = 'autocoder/issue-1-test'
+    gh = _GhStub(issue=issue)
+    git = _GitStub(default_sha='new-base', branch=branch, dirty_status='')
+    git.is_ancestor = lambda **kwargs: False  # the merge stays unresolved after each run
+    merges = []
+    git.merge = lambda **kwargs: merges.append((kwargs['cwd'], kwargs['ref'])) or False
+    state = RepoState(issues={1: IssueState(branch=branch, last_seen_issue_updated_at='now',
+                                            last_seen_default_branch_sha='old-base',
+                                            last_seen_allowed_issue_digest='d')})
+    worktree = tmp_path / 'worktree'
+    worktree.mkdir()
+    monkeypatch.setattr(runmod, 'issue_worktree_dir', lambda *args: worktree)
+    monkeypatch.setattr(runmod, '_ensure_worktree', lambda **kwargs: worktree)
+    calls = []
+    monkeypatch.setattr(runmod, '_maybe_run_codex', lambda **kwargs: calls.append(kwargs['trigger_reasons']))
+    for _ in range(5):
+        runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    # autocoder merges outside the sandbox before Codex runs, once for this default SHA.
+    assert calls == [('default_branch_advanced',)]
+    assert merges == [(worktree, 'origin/main')]
+    notices = [body for _, body in gh.issue_comments if 'could not merge `origin/main`' in body]
+    assert len(notices) == 1
+    git._default_sha = 'newer-base'
+    runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert calls == [('default_branch_advanced',)] * 2
+    comment = IssueComment('c1', 'trusted-user', 'retrigger', 'later', 'later', '')
+    gh._issue = replace(issue, updated_at='later', comments=(comment,))
+    runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert calls[-1] == ('issue_updated',)
+    assert len(merges) == 3

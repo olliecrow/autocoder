@@ -16,7 +16,7 @@ Rationale for non-obvious choices belongs in `docs/decisions.md`; this spec focu
 - **no pushing to base branch**: autocoder never pushes directly to the base branch (for example `main`) and never auto-merges PRs. It only pushes to its issue branches and opens/updates PRs.
 - **stay up to date**: autocoder should regularly sync with the latest remote base branch and integrate updates into its issue branch (prefer merge over history rewrite).
 - **startup sync first**: each run should start by fetching `origin` and checking for interrupted local work in the issue worktree before taking new feature actions.
-- **codex-owned merge execution**: runtime may detect/trigger merge-sync work, but codex is responsible for performing and resolving branch merges.
+- **runtime-owned Git writes**: before each codex run, autocoder merges `origin/<default-branch>` into a clean issue worktree outside the sandbox. Codex resolves conflicted file contents and verifies; it never fetches, commits, merges, or pushes. autocoder commits (completing any merge) and pushes after a `ready` decision.
 - **extreme merge care**: when integrating latest `origin/<default-branch>` into an issue branch/PR branch, autocoder must act conservatively, verify thoroughly, and avoid regressions on both the issue branch and default-branch expectations.
 - **attachments are in scope**: issue/PR attachments (docs/images/files) are part of the request; autocoder must fetch and incorporate them into the work.
 - **post-merge cleanup**: after a PR is merged, autocoder should delete its local worktree(s) and delete local/remote issue branches.
@@ -50,7 +50,7 @@ Rationale for non-obvious choices belongs in `docs/decisions.md`; this spec focu
 - User text may contain variants or typos (for example `AutoCoder`, `auto-coder`, `autocoder`); autocoder should be tolerant when interpreting human intent, but it should emit the canonical spelling in its own communications.
 
 ## Goal
-Use GitHub Issues and Pull Requests as the primary interface for human-agent collaboration on a target repo, while codex runs locally to implement changes end-to-end (build/test/commit/PR).
+Use GitHub Issues and Pull Requests as the primary interface for human-agent collaboration on a target repo, while codex runs locally to implement and verify changes, and autocoder commits, pushes, and opens the PR.
 
 ## Non-negotiable properties
 - **repo-scoped**: an autocoder instance works on exactly one target repo; it must not modify or operate on other repos on disk.
@@ -211,11 +211,11 @@ Invocation principles:
 - status updates should be explicit about current state, context (branch/PR), what triggered the run, what was checked/done, and what happens next.
 - keep prompt injection minimal: include identifiers/refs (issue number, branch, PR number, trigger reason, skills), and require codex to consume runtime-generated trusted issue/PR thread context instead of raw live thread bodies.
 - include a memory/context map in every codex prompt so codex is reminded where durable and ephemeral context lives, and can proactively fetch/read it.
-- treat default-branch advancement as a codex trigger: when `origin/<default-branch>` moves ahead of the active issue branch, invoke codex to perform merge-sync work and push updates.
+- treat default-branch advancement as a codex trigger: when `origin/<default-branch>` moves ahead of the active issue branch, merge it and invoke codex to verify the result. Make one attempt per default-branch SHA; if the branch is still behind, post one notice. New issue-author input allows another attempt.
 - treat local interrupted work as a codex trigger: if an owned issue worktree is dirty or has an in-progress git operation after restart/failure, invoke codex to recover and continue. Do not start recovery again for local state that a completed run left; wait for new issue-author input.
 - if new trusted issue-author comments/reviews arrive while codex is running, do not advance issue/PR "last seen" cursors past that newer trusted activity; schedule a follow-up codex run so the new input is processed.
-- create and push coherent checkpoint commits whenever meaningful changes exist; do not create empty commits.
-- codex should assume each run may be the last before interruption; preserve durable context in repo docs and preserve code state via commits/pushes before finishing.
+- autocoder commits and pushes remaining changes after a `ready` decision; it does not create empty commits.
+- codex should assume each run may be the last before interruption; preserve durable context in repo docs and return `ready` once verified changes exist.
 
 Default sandbox posture:
 - `codex exec --sandbox workspace-write --ask-for-approval never`
@@ -340,8 +340,8 @@ Assumptions:
 Required behavior:
 - autocoder periodically fetches from remote and integrates the latest base branch changes into its issue branch.
 - prefer merge from base branch into the issue branch over rebasing/history rewrite (keeps history stable for a long-running PR).
-- if merges produce conflicts, autocoder resolves them and reports the resolution clearly in the PR/issue.
-- when merge-syncing from base branch, treat it as high risk: inspect conflicts carefully, run relevant verification after merge, and do not push a merge result unless confidence is high that neither the issue branch behavior nor merged base-branch behavior regressed.
+- if merges produce conflicts, autocoder leaves them in the worktree; codex resolves them and reports the resolution clearly in the PR/issue.
+- when merge-syncing from base branch, treat it as high risk: inspect conflicts carefully, run relevant verification after merge, and return `ready` (which pushes the merge) only when confidence is high that neither the issue branch behavior nor merged base-branch behavior regressed.
 
 ## Communication contract
 Goals:
