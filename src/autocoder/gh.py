@@ -103,7 +103,7 @@ class PullRequestDetail:
 def _pr_summary_from_json(it) -> PullRequestSummary:
     return PullRequestSummary(number=it["number"], title=it["title"], url=it["url"], state=it["state"],
                               updated_at=it["updatedAt"], head_ref_name=it["headRefName"],
-                              base_ref_name=it["baseRefName"], is_cross_repository=it.get("isCrossRepository", True),
+                              base_ref_name=it["baseRefName"], is_cross_repository=it.get("isCrossRepository") is not False,
                               author=(it.get("author") or {}).get("login", ""), body=it.get("body") or "")
 
 
@@ -364,7 +364,7 @@ class GhClient:
             author=(it.get("author") or {}).get("login", ""),
             head_ref_name=it["headRefName"],
             base_ref_name=it["baseRefName"],
-            is_cross_repository=bool(it.get("isCrossRepository")),
+            is_cross_repository=it.get("isCrossRepository") is not False,
             merged_at=it.get("mergedAt"),
             body=it.get("body") or "",
             comments=tuple(comments),
@@ -408,7 +408,7 @@ class GhClient:
             author=(it.get("author") or {}).get("login", ""),
             head_ref_name=it["headRefName"],
             base_ref_name=it["baseRefName"],
-            is_cross_repository=bool(it.get("isCrossRepository")),
+            is_cross_repository=it.get("isCrossRepository") is not False,
             merged_at=it.get("mergedAt"),
             body=it.get("body") or "",
             comments=tuple(),

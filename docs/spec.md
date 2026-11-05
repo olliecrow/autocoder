@@ -168,13 +168,13 @@ Supported keys:
 Invariant:
 - one issue -> one branch -> one PR.
 
-If an issue already has an open PR at the moment it is labeled `autocoder`, autocoder should resume that PR rather than creating a second one (when it is safe to adopt: same-repo PR, allowlisted PR author, and `pr.author == issue.author`).
+If an issue already has an open PR at the moment it is labeled `autocoder`, autocoder should resume that PR rather than creating a second one (when it is safe to adopt: same-repo PR, allowlisted PR author, and the PR ownership rule below passes).
 
 Branch ownership and safety:
 - prefer branches matching `autocoder/issue-<n>-*`.
 - autocoder must not push to branches that it cannot verify are safe to mutate (for example, a PR from a fork).
 - autocoder only pushes to PR branches when the PR is not cross-repository, the PR author is allowlisted, and `pr.author == issue.author`. One exception: autocoder's own PR, authored by the authenticated `gh` login (resolved at startup; if that fails, the exception is off) on the claimed `autocoder/issue-<n>-*` branch, is trusted even when another allowlisted login opened the issue. Otherwise it should skip pushing and ask for clarification.
-- autocoder must not adopt or mutate PRs authored by non-allowlisted logins or by an author different from the issue author; ignore untrusted PRs silently; report allowlisted author conflicts once.
+- autocoder must not adopt or mutate PRs authored by non-allowlisted logins; apply the ownership rule above, ignore untrusted PRs silently, and report allowlisted author conflicts once. Missing or null cross-repository flags fail closed.
 - if autocoder cannot safely determine a single PR/branch to use (for example, multiple open PRs), it should ask a single clear question in the issue and stop until answered.
 
 Resuming after stop:

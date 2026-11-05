@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from autocoder._runner import CmdResult, Runner
 from autocoder.gh import GhClient
 
@@ -167,3 +169,33 @@ def test_unresolved_gh_login_disables_own_pr_exception() -> None:
             raise CommandError(result=CmdResult(args=list(args), returncode=1, stdout="", stderr="forbidden"))
 
     assert _resolve_gh_login(GhClient(runner=_Runner(), repo="owner/repo")) == ""
+
+
+@pytest.mark.parametrize("flag", ["missing", None, False, True])
+@pytest.mark.parametrize("operation", ["view", "create", "summary"])
+def test_unknown_cross_repository_flag_fails_closed(flag, operation):
+    class Runner(_RecordingRunner):
+        def run(self, args, **kwargs):
+            result = super().run(args, **kwargs)
+            if list(args)[:3] == ["gh", "pr", "view"]:
+                payload = json.loads(result.stdout)
+                payload.pop("isCrossRepository")
+                if flag != "missing":
+                    payload["isCrossRepository"] = flag
+                return CmdResult(args=result.args, returncode=0, stdout=json.dumps(payload), stderr="")
+            return result
+
+    gh = GhClient(runner=Runner(), repo="owner/repo")
+    if operation == "view":
+        pr = gh.view_pr(number=123)
+    elif operation == "create":
+        pr = gh.create_pr(title="t", body="b", base="main", head="branch")
+    else:
+        # Summaries use the same flag contract.
+        from autocoder.gh import _pr_summary_from_json
+        payload = {"number": 123, "title": "t", "url": "", "headRefName": "branch", "baseRefName": "main",
+                   "author": {"login": "trusted-user"}, "state": "OPEN", "updatedAt": "now"}
+        if flag != "missing":
+            payload["isCrossRepository"] = flag
+        pr = _pr_summary_from_json(payload)
+    assert pr.is_cross_repository is (flag is not False)
