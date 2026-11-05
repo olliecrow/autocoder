@@ -319,6 +319,8 @@ Fetch only GitHub attachment paths and image hosts. Raw content must belong to t
 
 Redact known token and private-key formats in every GitHub title, body, and comment. Also redact exact values of at least eight characters from secret-named environment variables and all assignments in the managed clone `.env`. Apply the same filter to generated commit messages. Redaction is defense in depth; never give the worker unrelated credentials.
 
+Scan outgoing added lines before each push and block likely secrets. Committed files were not checked before, and Codex can read every file the host user can read. The scan skips merged-in default-branch history so upstream test fixtures do not block a push. It is defense in depth; a dedicated OS user is the main control.
+
 ## Execution isolation default
 
 Default to `codex_sandbox = "workspace-write"`. Keep unrestricted execution as an explicit `danger-full-access` opt-in for isolated workers. This changes earlier behavior: sandboxed tasks can fail when they need network or external filesystem access. autocoder performs its own commit and push outside the sandbox. Use a single-repo fine-grained GitHub token, a repo deploy key, and default-branch protection. Trust repo writers and allowlisted issue authors at code-execution level. No live Codex run was used to validate sandbox-dependent task capabilities.

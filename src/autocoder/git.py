@@ -133,6 +133,25 @@ class GitClient:
     def commit(self, *, cwd: Path, message: str) -> None:
         self._git(["commit", "-m", message], cwd=cwd)
 
+    def added_lines(self, *, cwd: Path, exclude_refs: Sequence[str]) -> str:
+        """
+        Return lines that commits in `HEAD --not <exclude_refs>` add.
+
+        Merge commits show only their conflict resolutions (`--cc`), not the merged-in history.
+        """
+        out = self._git(["log", "-p", "--cc", "--format=", "--no-color", "--no-ext-diff", "--no-textconv",
+                         "HEAD", "--not", *exclude_refs, "--"], cwd=cwd)
+        added: list[str] = []
+        columns = 0  # One prefix column per parent; known only inside a hunk.
+        for line in out.splitlines():
+            if line.startswith("diff "):
+                columns = 0
+            elif line.startswith("@@"):
+                columns = len(line) - len(line.lstrip("@")) - 1
+            elif columns and "+" in line[:columns] and "-" not in line[:columns]:
+                added.append(line[columns:])
+        return "\n".join(added)
+
     def push(self, *, cwd: Path, branch: str) -> None:
         self._git(["push", "-u", "origin", f"HEAD:refs/heads/{branch}"], cwd=cwd)
 

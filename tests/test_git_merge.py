@@ -62,3 +62,23 @@ def test_merge_leaves_conflicts_for_resolution_then_commit_completes_it(repo: Pa
 
     assert not git.has_in_progress_operation(cwd=repo)
     assert git.is_ancestor(cwd=repo, ancestor="main", descendant="issue")
+
+
+def test_added_lines_skip_merged_in_history_but_keep_conflict_resolutions(repo: Path) -> None:
+    _commit_file(repo, "main", "f.txt", "from main\n")
+    _commit_file(repo, "main", "upstream.txt", "already on the default branch\n")
+    _commit_file(repo, "issue", "f.txt", "from issue\n")
+    _git(repo, "branch", "pushed")  # what the remote issue branch already has
+    _commit_file(repo, "issue", "new.txt", "new outgoing line\n")
+    git = GitClient(runner=SubprocessRunner())
+    assert git.merge(cwd=repo, ref="main") is False
+    (repo / "f.txt").write_text("resolved line\n", encoding="utf-8")
+    git.add_all(cwd=repo)
+    git.commit(cwd=repo, message="merge main")
+
+    added = git.added_lines(cwd=repo, exclude_refs=["main", "pushed"]).splitlines()
+
+    assert "new outgoing line" in added
+    assert "resolved line" in added
+    assert "already on the default branch" not in added
+    assert "from issue" not in added

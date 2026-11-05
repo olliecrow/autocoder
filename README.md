@@ -33,7 +33,8 @@ Codex uses `workspace-write` by default, with command approvals disabled. Networ
 - Use a write-enabled SSH deploy key for that repo only. Configure the managed clone to use that key with `IdentitiesOnly=yes`; do not expose an agent with unrelated keys.
 - Protect the default branch and require a pull request. The autocoder push guard does not constrain shell commands that Codex runs itself in unrestricted mode.
 - Trust allowlisted issue authors and everyone with repo write access at code-execution level. Writers control repo files and can edit comments. Triage users can label an allowlisted author's issue. The allowlist filters thread input; it does not make repo code or attachments safe.
-- Keep unrelated secrets out of the worker environment. Outgoing text redaction is a second line of defense, not a guarantee against disclosure.
+- Run autocoder as a dedicated OS user (or in a VM or container) in both sandbox modes. `workspace-write` limits writes and network access, not reads: Codex can read every file that user can read, including credential files and the copied `.env`.
+- Keep unrelated secrets out of the worker environment. Outgoing text redaction and the pre-push scan (known token formats and values of secret-named variables) are a second line of defense. They cannot catch encoded or transformed secrets.
 
 See `docs/spec.md` for runtime behavior and `SECURITY.md` for private reports.
 

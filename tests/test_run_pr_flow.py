@@ -28,9 +28,14 @@ class _GitStub:
         self._base_sha = base_sha
         self._head_sha = head_sha
         self.pushed: list[tuple[str, str]] = []
+        self.outgoing_added = ""
 
     def remote_branch_exists(self, **kwargs):
         return True
+
+    def added_lines(self, *, cwd: Path, exclude_refs) -> str:  # type: ignore[no-untyped-def]
+        assert exclude_refs == ["origin/main", "origin/autocoder/issue-1-test"]
+        return self.outgoing_added
 
     def current_branch(self, *, cwd: Path):
         return "autocoder/issue-1-test"
@@ -905,3 +910,35 @@ def test_autocoder_pr_is_trusted_when_issue_author_is_not_the_gh_login(tmp_path)
     other_issue_state = IssueState(branch='autocoder/issue-2-test', pr=7)
     gh._pr = replace(pr, head_ref_name='autocoder/issue-2-test')
     assert _find_or_adopt_pr(rt=rt, issue_state=other_issue_state, issue_number=1, issue_author='teammate') is None
+
+
+def test_ready_run_refuses_to_push_commits_that_add_a_likely_secret(tmp_path):
+    import pytest
+    worktree = tmp_path / 'worktree'
+    (worktree / '.autocoder' / 'plan').mkdir(parents=True)
+    managed = tmp_path / 'managed'
+    managed.mkdir()
+    env_value = 'example-' + 'value-1234'
+    (managed / '.env').write_text(f'SERVICE_TOKEN={env_value}\nBASE_URL=https://example.com/api\n', encoding='utf-8')
+    git = _GitStub(base_sha='base', head_sha='head')
+    codex = _CodexStub(output=CodexOutput('ready', 'done', None, 'title', 'body', 'message', ()))
+    rt = SimpleNamespace(repo=SimpleNamespace(full_name='owner/repo'),
+                         cfg=SimpleNamespace(mentions=(), allowed_github_logins=('trusted-user',)),
+                         default_branch='main', managed_dir=managed,
+                         state_path=tmp_path / 'state.json', git=git, gh=_GhStub(), codex=codex)
+    issue = IssueDetail(1, 't', '', 'OPEN', 'now', 'trusted-user', '', ('autocoder',), ())
+    rt.gh.view_issue = lambda **kwargs: issue
+    for added in ('token = "ghp_' + 'A1b2' * 9 + '"', f'value: {env_value}'):
+        git.outgoing_added = added
+        with pytest.raises(RuntimeError, match='push blocked'):
+            _maybe_run_codex(rt=rt, issue_state=IssueState(branch='autocoder/issue-1-test'), issue=issue,
+                             pr=None, worktree_dir=worktree, trigger_reasons=())
+    assert git.pushed == []
+    # Non-secret `.env` values (names without TOKEN/SECRET/KEY/PASS) do not block a push.
+    git.outgoing_added = 'url = "https://example.com/api"'
+    state = IssueState(branch='autocoder/issue-1-test', pr=8)
+    rt.gh.view_pr = lambda **kwargs: PullRequestDetail(8, 't', '', 'OPEN', 'now', 'trusted-user', state.branch,
+                                                       'main', False, None, '', (), ())
+    rt.gh.edit_pr = lambda **kwargs: None
+    _maybe_run_codex(rt=rt, issue_state=state, issue=issue, pr=None, worktree_dir=worktree, trigger_reasons=())
+    assert len(git.pushed) == 1

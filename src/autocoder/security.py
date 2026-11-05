@@ -148,14 +148,34 @@ def redact_secrets(text: str, *, extra_values: Iterable[str] = ()) -> str:
     return _SECRET_PATTERN.sub("[redacted]", text)
 
 
+def _secret_named(name: str) -> bool:
+    return any(key in name.upper() for key in ("TOKEN", "SECRET", "KEY", "PASSWORD", "PASS"))
+
+
+def _env_file_assignments(managed_dir: Path | None) -> list[tuple[str, str]]:
+    path = managed_dir / ".env" if managed_dir is not None else None
+    if path is None or not path.exists():
+        return []
+    assignments = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        name, sep, value = line.partition("=")
+        if sep and name.strip() and not name.lstrip().startswith("#"):
+            assignments.append((name.strip(), value.strip().strip("\"'")))
+    return assignments
+
+
 def redact_for_repo(text: str, *, managed_dir: Path | None = None) -> str:
-    values = [value for name, value in os.environ.items()
-              if any(key in name.upper() for key in ("TOKEN", "SECRET", "KEY", "PASSWORD", "PASS"))]
-    if managed_dir is not None:
-        path = managed_dir / ".env"
-        if path.exists():
-            for line in path.read_text(encoding="utf-8").splitlines():
-                name, sep, value = line.partition("=")
-                if sep and name.strip() and not name.lstrip().startswith("#"):
-                    values.append(value.strip().strip("\"'"))
+    values = [value for name, value in os.environ.items() if _secret_named(name)]
+    values += [value for _name, value in _env_file_assignments(managed_dir)]
     return redact_secrets(text, extra_values=values)
+
+
+def contains_likely_secret(text: str, *, managed_dir: Path | None = None) -> bool:
+    """
+    Detect known token formats and values of secret-named variables (environment and `.env`).
+
+    Encoded or transformed values are not detected.
+    """
+    values = [value for name, value in [*os.environ.items(), *_env_file_assignments(managed_dir)]
+              if _secret_named(name) and len(value) >= 8]
+    return bool(_SECRET_PATTERN.search(text)) or any(value in text for value in values)

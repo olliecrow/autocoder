@@ -34,6 +34,7 @@ from .paths import (
 )
 from .repo import RepoSpec, parse_repo_ssh_url, remote_matches_repo, slugify
 from .security import (
+    contains_likely_secret,
     filter_allowed_logins,
     is_allowed_human_comment,
     is_allowed_login,
@@ -790,6 +791,16 @@ def _expected_push_branch(*, rt, issue_state, issue, pr, worktree_dir):
     return expected
 
 
+def _refuse_likely_secret_push(*, rt: _Runtime, worktree_dir: Path, branch: str) -> None:
+    exclude_refs = [f"origin/{rt.default_branch}"]
+    if rt.git.remote_branch_exists(cwd=rt.managed_dir, remote="origin", branch=branch):
+        exclude_refs.append(f"origin/{branch}")
+    if contains_likely_secret(rt.git.added_lines(cwd=worktree_dir, exclude_refs=exclude_refs),
+                              managed_dir=rt.managed_dir):
+        raise RuntimeError("push blocked: outgoing commits add a likely secret. "
+                           "Remove it from the local branch history, then reply retrigger")
+
+
 def _cleanup_local(*, rt: _Runtime, issue_number: int, issue_state: IssueState) -> None:
     worktree_dir = issue_worktree_dir(rt.repo, issue_number)
     if worktree_dir.exists():
@@ -1475,6 +1486,7 @@ def _maybe_run_codex(
     else:
         _log("git status clean after codex; skipping commit", level="debug", issue=issue.number, pr=pr_number)
 
+    _refuse_likely_secret_push(rt=rt, worktree_dir=worktree_dir, branch=expected_branch)
     rt.git.push(cwd=worktree_dir, branch=expected_branch)
 
     pr_title = out.pr_title or f"issue #{issue.number}: {issue.title}"
