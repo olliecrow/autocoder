@@ -212,7 +212,7 @@ Invocation principles:
 - keep prompt injection minimal: include identifiers/refs (issue number, branch, PR number, trigger reason, skills), and require codex to consume runtime-generated trusted issue/PR thread context instead of raw live thread bodies.
 - include a memory/context map in every codex prompt so codex is reminded where durable and ephemeral context lives, and can proactively fetch/read it.
 - treat default-branch advancement as a codex trigger: when `origin/<default-branch>` moves ahead of the active issue branch, invoke codex to perform merge-sync work and push updates.
-- treat local interrupted work as a codex trigger: if an owned issue worktree is dirty or has an in-progress git operation after restart/failure, invoke codex to recover and continue.
+- treat local interrupted work as a codex trigger: if an owned issue worktree is dirty or has an in-progress git operation after restart/failure, invoke codex to recover and continue. Do not start recovery again for local state that a completed run left; wait for new issue-author input.
 - if new trusted issue-author comments/reviews arrive while codex is running, do not advance issue/PR "last seen" cursors past that newer trusted activity; schedule a follow-up codex run so the new input is processed.
 - create and push coherent checkpoint commits whenever meaningful changes exist; do not create empty commits.
 - codex should assume each run may be the last before interruption; preserve durable context in repo docs and preserve code state via commits/pushes before finishing.

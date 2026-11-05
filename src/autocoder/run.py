@@ -1814,7 +1814,10 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
                 pr_updated_at=pr_updated_at,
             )
             default_branch_advanced = issue_state.last_seen_default_branch_sha != default_branch_sha
-            local_recovery_needed = _local_recovery_needed(rt=rt, issue_number=issue_meta.number)
+            local_changes = _local_recovery_needed(rt=rt, issue_number=issue_meta.number)
+            if not local_changes:
+                issue_state.local_changes_after_run = False
+            local_recovery_needed = local_changes and not issue_state.local_changes_after_run
 
             # Only trigger default-branch sync when we can resolve a real branch ref for ancestry checks.
             descendant_ref = None
@@ -1976,6 +1979,8 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
                 except Exception:
                     pass
             ran_codex += 1
+            # Changes left by a completed run wait for new issue-author input.
+            issue_state.local_changes_after_run = _local_recovery_needed(rt=rt, issue_number=issue_full.number)
 
             # Refresh cursors after any actions. If trusted issue-author input changed while codex
             # was running, keep cursors behind so the next poll schedules a follow-up run.

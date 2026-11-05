@@ -588,3 +588,38 @@ def test_closed_pr_posts_one_notice_over_three_polls(tmp_path):
         runmod._run_one_iteration(rt=rt, state=state)
     assert len(gh.issue_comments) == 1
     assert 'not merged' in gh.issue_comments[0][1]
+
+
+def _iteration_runtime(tmp_path, gh, git, allowed=ALLOWED):
+    return SimpleNamespace(repo=SimpleNamespace(owner='owner', name='repo', full_name='owner/repo'),
+                           cfg=SimpleNamespace(allowed_github_logins=allowed, mentions=()),
+                           instance_id='x', managed_dir=tmp_path, default_branch='main', gh=gh, git=git)
+
+
+def test_local_changes_left_by_completed_run_wait_for_author_input(tmp_path, monkeypatch):
+    from dataclasses import replace
+    issue = IssueDetail(1, 't', '', 'OPEN', 'now', 'trusted-user', '', ('autocoder', 'autocoder:claimed'), ())
+    branch = 'autocoder/issue-1-test'
+    gh = _GhStub(issue=issue)
+    git = _GitStub(default_sha='base', branch=branch, dirty_status=' M file')
+    git.is_ancestor = lambda **kwargs: True
+    state = RepoState(issues={1: IssueState(branch=branch, last_seen_issue_updated_at='now',
+                                            last_seen_default_branch_sha='base',
+                                            last_seen_allowed_issue_digest='d')})
+    worktree = tmp_path / 'worktree'
+    worktree.mkdir()
+    monkeypatch.setattr(runmod, 'issue_worktree_dir', lambda *args: worktree)
+    monkeypatch.setattr(runmod, '_ensure_worktree', lambda **kwargs: worktree)
+    calls = []
+    # Codex edits files, then asks a question (needs_info): the worktree stays dirty.
+    monkeypatch.setattr(runmod, '_maybe_run_codex', lambda **kwargs: calls.append(kwargs['trigger_reasons']))
+    for _ in range(3):
+        runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert calls == [('local_recovery_needed',)]
+    comment = IssueComment('c1', 'trusted-user', 'answer', 'later', 'later', '')
+    gh._issue = replace(issue, updated_at='later', comments=(comment,))
+    runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert calls == [('local_recovery_needed',), ('issue_updated',)]
+    git._dirty_status = ''
+    runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert state.issues[1].local_changes_after_run is False

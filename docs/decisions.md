@@ -177,9 +177,9 @@ Prior codex runs can fail mid-edit/merge, leaving local worktree state that woul
 Rationale:
 Makes restarts self-healing and keeps progress moving without requiring manual retrigger comments for local-only interruption cases.
 Trade-offs:
-Can cause repeated recovery attempts on persistent local conflicts until codex resolves them or asks for human input.
+Local changes left by a completed run (for example after `needs_info`) wait for new issue-author input; otherwise each poll would start the same run again.
 Enforcement:
-Each poll inspects owned issue worktrees for dirty/in-progress git state and adds a `local_recovery_needed` trigger reason for codex invocation.
+Each poll inspects owned issue worktrees for dirty/in-progress git state and adds a `local_recovery_needed` trigger reason for codex invocation, unless a completed run left that state (`local_changes_after_run`). A clean worktree clears the flag.
 References:
 `src/autocoder/run.py`, `src/autocoder/git.py`, `tests/test_run_recovery.py`, `docs/spec.md`
 
