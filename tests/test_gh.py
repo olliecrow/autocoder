@@ -147,3 +147,12 @@ def test_label_bootstrap_preserves_existing_labels():
     assert len(runner.calls) == 1
     assert runner.calls[0][0][3] == 'missing'
     assert '--force' not in runner.calls[0][0]
+
+
+def test_authenticated_login_reads_gh_user() -> None:
+    class _Runner(Runner):
+        def run(self, args, **kwargs) -> CmdResult:  # type: ignore[no-untyped-def]
+            assert list(args) == ["gh", "api", "user", "--jq", ".login"]
+            return CmdResult(args=list(args), returncode=0, stdout="operator\n", stderr="")
+
+    assert GhClient(runner=_Runner(), repo="owner/repo").authenticated_login() == "operator"

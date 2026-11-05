@@ -249,7 +249,9 @@ def test_find_or_adopt_pr_rejects_pr_author_mismatch_with_issue_author() -> None
         reviews=(),
     )
     gh = _GhAdoptStub(pr=pr)
-    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(mentions=(), allowed_github_logins=("trusted-user",)))
+    # The PR author is the gh login, but the PR is not on the claimed autocoder branch.
+    rt = SimpleNamespace(gh=gh, gh_login="trusted-user",
+                         cfg=SimpleNamespace(mentions=(), allowed_github_logins=("trusted-user",)))
     issue_state = IssueState(branch="autocoder/issue-1-test", pr=123)
 
     adopted = _find_or_adopt_pr(
@@ -843,7 +845,8 @@ def test_multiple_trusted_author_conflicts_do_not_repeat_notices():
     gh.list_prs = lambda **kwargs: [pr, other]
     gh.view_pr = lambda **kwargs: pr if kwargs['number'] == 7 else other
     gh.search_open_prs_by_body_snippet = lambda **kwargs: []
-    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(allowed_github_logins=('trusted-user', 'another-user')))
+    rt = SimpleNamespace(gh=gh, gh_login='trusted-user',
+                         cfg=SimpleNamespace(allowed_github_logins=('trusted-user', 'another-user')))
     rt.git = SimpleNamespace(remote_branch_exists=lambda **kwargs: True)
     rt.managed_dir = Path('.')
     state = IssueState(branch=pr.head_ref_name)
@@ -872,3 +875,33 @@ def test_resolved_pr_conflict_clears_old_notice():
     state = IssueState(branch='autocoder/issue-1-test', pr_search_done=True, last_notice='multiple:7,8')
     assert _find_or_adopt_pr(rt=rt, issue_state=state, issue_number=1, issue_author='trusted-user') is None
     assert state.last_notice is None
+
+
+def test_autocoder_pr_is_trusted_when_issue_author_is_not_the_gh_login(tmp_path):
+    from dataclasses import replace
+
+    from autocoder.run import _expected_push_branch
+    # Two allowlisted logins: `operator` runs gh and opens autocoder's PR; `teammate` opened the issue.
+    branch = 'autocoder/issue-1-test'
+    pr = PullRequestDetail(7, 't', '', 'OPEN', 'now', 'operator', branch, 'main', False, None, 'Fixes #1', (), ())
+    gh = _GhAdoptStub(pr=pr)
+    rt = SimpleNamespace(gh=gh, gh_login='operator', default_branch='main',
+                         cfg=SimpleNamespace(mentions=(), allowed_github_logins=('operator', 'teammate')),
+                         git=SimpleNamespace(current_branch=lambda **kwargs: branch))
+    state = IssueState(branch=branch, pr=7)
+    issue = IssueDetail(1, 't', '', 'OPEN', 'now', 'teammate', '', ('autocoder',), ())
+
+    assert _find_or_adopt_pr(rt=rt, issue_state=state, issue_number=1, issue_author='teammate') == pr
+    assert state.pr == 7
+    assert _expected_push_branch(rt=rt, issue_state=state, issue=issue, pr=pr, worktree_dir=tmp_path) == branch
+    assert gh.issue_comments == []
+
+    # Any other branch, another issue's branch, or a cross-repository PR still needs the issue author.
+    for untrusted in (replace(pr, head_ref_name='autocoder/issue-1-other'),
+                      replace(pr, is_cross_repository=True)):
+        gh._pr = untrusted
+        assert _find_or_adopt_pr(rt=rt, issue_state=IssueState(branch=branch, pr=7), issue_number=1,
+                                 issue_author='teammate') is None
+    other_issue_state = IssueState(branch='autocoder/issue-2-test', pr=7)
+    gh._pr = replace(pr, head_ref_name='autocoder/issue-2-test')
+    assert _find_or_adopt_pr(rt=rt, issue_state=other_issue_state, issue_number=1, issue_author='teammate') is None

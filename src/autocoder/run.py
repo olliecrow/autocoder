@@ -78,6 +78,8 @@ class _Runtime:
     git: GitClient
     gh: GhClient
     codex: CodexClient
+    # The authenticated `gh` login that opens autocoder's own PRs.
+    gh_login: str = ""
 
 
 def _now_ts() -> str:
@@ -697,12 +699,17 @@ def _notice_once(*, rt, issue_state: IssueState, issue_number: int, key: str, bo
     issue_state.last_notice = key
 
 
-def _pr_adoption_problem(pr, *, issue_author: str, allowed_logins) -> str | None:
-    if pr.is_cross_repository or not is_allowed_login(pr.author, allowed_logins=allowed_logins):
+def _pr_adoption_problem(pr, *, rt, issue_state: IssueState, issue_number: int, issue_author: str) -> str | None:
+    if pr.is_cross_repository or not is_allowed_login(pr.author, allowed_logins=_cfg_allowed_logins(rt.cfg)):
         return "untrusted"
-    if not _pr_author_matches_issue_author(pr_author=pr.author, issue_author=issue_author):
-        return "author does not match issue author"
-    return None
+    if _pr_author_matches_issue_author(pr_author=pr.author, issue_author=issue_author):
+        return None
+    # autocoder opens PRs as the `gh` login, which can differ from an allowlisted issue author.
+    if (rt.gh_login and _same_login(pr.author, rt.gh_login) and issue_state.branch
+            and pr.head_ref_name == issue_state.branch
+            and issue_state.branch.startswith(f"autocoder/issue-{issue_number}-")):
+        return None
+    return "author does not match issue author"
 
 
 def _find_or_adopt_pr(*, rt: _Runtime, issue_state: IssueState, issue_number: int,
@@ -710,7 +717,8 @@ def _find_or_adopt_pr(*, rt: _Runtime, issue_state: IssueState, issue_number: in
     conflicts: set[int] = set()
 
     def eligible(pr):
-        problem = _pr_adoption_problem(pr, issue_author=issue_author, allowed_logins=_cfg_allowed_logins(rt.cfg))
+        problem = _pr_adoption_problem(pr, rt=rt, issue_state=issue_state, issue_number=issue_number,
+                                       issue_author=issue_author)
         if problem == "untrusted":
             _log("ignoring untrusted PR", level="warn", pr=pr.number)
         elif problem:
@@ -775,8 +783,8 @@ def _expected_push_branch(*, rt, issue_state, issue, pr, worktree_dir):
     expected = pr.head_ref_name if pr is not None else issue_state.branch
     if (not expected or expected == rt.default_branch
             or (pr is None and not re.fullmatch(rf"autocoder/issue-{issue.number}-[a-z0-9-]+", expected))
-            or (pr is not None and _pr_adoption_problem(pr, issue_author=issue.author,
-                                                       allowed_logins=_cfg_allowed_logins(rt.cfg)))
+            or (pr is not None and _pr_adoption_problem(pr, rt=rt, issue_state=issue_state,
+                                                       issue_number=issue.number, issue_author=issue.author))
             or rt.git.current_branch(cwd=worktree_dir) != expected):
         raise RuntimeError("worktree is on an unexpected or unsafe branch; restore the issue branch and reply retrigger")
     return expected
@@ -2171,7 +2179,7 @@ def run_session(*, repo_ssh_url: str) -> int:
     try:
         state = load_repo_state(rt.state_path)
         _ensure_managed_clone(rt=rt)
-        rt = replace(rt, default_branch=_discover_default_branch(rt=rt))
+        rt = replace(rt, default_branch=_discover_default_branch(rt=rt), gh_login=gh.authenticated_login())
         _ensure_labels(rt=rt)
     except BaseException:
         lock.release()

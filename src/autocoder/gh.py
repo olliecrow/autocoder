@@ -141,6 +141,13 @@ class GhClient:
         out = self._gh(args, input_text=input_text)
         return json.loads(out)
 
+    def authenticated_login(self) -> str:
+        res = self._runner.run(["gh", "api", "user", "--jq", ".login"], check=True)
+        login = res.stdout.strip()
+        if not login:
+            raise RuntimeError("unable to resolve the authenticated gh login")
+        return login
+
     def repo_default_branch(self) -> str:
         # `gh repo view` does not support `-R/--repo`; the repository is a positional argument.
         res = self._runner.run(

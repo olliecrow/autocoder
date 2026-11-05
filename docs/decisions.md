@@ -114,7 +114,7 @@ Maintains a strict trust boundary: issue-owner-only execution context and mutati
 Trade-offs:
 If a non-allowlisted PR already exists, autocoder will ask the allowlisted human to close it or otherwise clarify desired behavior before proceeding.
 Enforcement:
-PR adoption paths in the poller reject cross-repository PRs, PRs authored by non-allowlisted logins, and PRs whose author does not match the issue author. Push safety uses the same guard.
+PR adoption paths in the poller reject cross-repository PRs, PRs authored by non-allowlisted logins, and PRs whose author does not match the issue author. The only exception is autocoder's own PR: authored by the authenticated `gh` login on the claimed `autocoder/issue-<n>-*` branch. Without it, autocoder rejected its own PR when a different allowlisted login opened the issue. Push safety uses the same guard. Trusted instructions still come only from the issue author.
 References:
 `src/autocoder/run.py`, `docs/spec.md`
 
