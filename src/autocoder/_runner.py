@@ -77,41 +77,24 @@ class SubprocessRunner(Runner):
         if log_path is not None:
             return self._run_logged(argv=argv, cwd=cwd, env=env, input_text=input_text,
                                     timeout_s=timeout_s, check=check, log_path=log_path)
-        try:
-            completed = subprocess.run(
-                argv,
-                cwd=str(cwd) if cwd else None,
-                env={**os.environ, **env} if env else None,
-                input=input_text,
-                text=True,
-                encoding=encoding,
-                capture_output=True,
-                timeout=timeout_s,
-            )
-        except subprocess.TimeoutExpired as e:
-            def _coerce_timeout_text(val: str | bytes | None) -> str:
-                if val is None:
-                    return ""
-                if isinstance(val, bytes):
-                    return val.decode("utf-8", errors="replace")
-                return val
-
-            raise CommandTimeout(
-                argv=argv,
-                timeout_s=float(timeout_s or 0),
-                stdout=_coerce_timeout_text(e.stdout),
-                stderr=_coerce_timeout_text(e.stderr),
-            ) from e
-        res = CmdResult(
-            args=argv,
-            returncode=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
-        )
+        # A new session puts the command and its children in their own process group.
+        with subprocess.Popen(argv, cwd=str(cwd) if cwd else None, env={**os.environ, **env} if env else None,
+                              stdin=subprocess.PIPE if input_text is not None else subprocess.DEVNULL,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              text=True, encoding=encoding, start_new_session=True) as proc:
+            try:
+                stdout, stderr = proc.communicate(input_text, timeout=timeout_s)
+            except BaseException as exc:
+                _stop_process_group(proc)
+                if isinstance(exc, subprocess.TimeoutExpired):
+                    stdout, stderr = proc.communicate()
+                    raise CommandTimeout(argv=argv, timeout_s=float(timeout_s or 0),
+                                         stdout=stdout or "", stderr=stderr or "") from exc
+                raise
+        res = CmdResult(args=argv, returncode=proc.returncode, stdout=stdout, stderr=stderr)
         if check and res.returncode != 0:
             raise CommandError(result=res)
         return res
-
 
     def _run_logged(self, *, argv, cwd, env, input_text, timeout_s, check, log_path):
         log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -126,20 +109,7 @@ class SubprocessRunner(Runner):
             try:
                 returncode = proc.wait(timeout=timeout_s)
             except BaseException as exc:
-                try:
-                    os.killpg(proc.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-                try:
-                    proc.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    pass
-                finally:
-                    try:
-                        os.killpg(proc.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-                    proc.wait()
+                _stop_process_group(proc, grace_s=10)
                 if isinstance(exc, subprocess.TimeoutExpired):
                     raise CommandTimeout(argv=argv, timeout_s=float(timeout_s or 0)) from exc
                 raise
@@ -147,3 +117,25 @@ class SubprocessRunner(Runner):
         if check and returncode:
             raise CommandError(result=result)
         return result
+
+
+def _stop_process_group(proc: subprocess.Popen, *, grace_s: float = 5) -> None:
+    """
+    Stop a command started in its own session, including its children.
+
+    SIGTERM first, so git can remove its lock files; SIGKILL whatever remains after the grace period.
+    """
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        proc.wait(timeout=grace_s)
+    except subprocess.TimeoutExpired:
+        pass
+    finally:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait()

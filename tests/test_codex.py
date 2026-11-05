@@ -94,7 +94,6 @@ def test_read_timeout_s_rejects_invalid_values(monkeypatch) -> None:
 
 
 def test_logged_runner_streams_and_times_out_process_group(tmp_path):
-    import os
     import sys
 
     from autocoder._runner import CommandTimeout, SubprocessRunner
@@ -108,11 +107,54 @@ def test_logged_runner_streams_and_times_out_process_group(tmp_path):
               'print(p.pid,flush=True); time.sleep(60)')
     with pytest.raises(CommandTimeout):
         runner.run([sys.executable, '-c', script], log_path=path, timeout_s=0.2)
-    child = int(path.read_text().strip())
-    stat = Path(f'/proc/{child}/stat')
-    # A killed orphan can remain a zombie until the host init process reaps it.
-    if stat.exists():
-        assert stat.read_text().split()[2] == 'Z'
-    else:
-        with pytest.raises(ProcessLookupError):
-            os.kill(child, 0)
+    assert _process_ends(int(path.read_text().strip()))
+
+
+def _process_ends(pid, timeout_s=5.0):
+    """True once `pid` is gone or a zombie; a killed orphan waits for the host init process to reap it."""
+    import os
+    import time
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            state = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
+        except FileNotFoundError:
+            state = None
+        if state is None:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return True
+        elif state == 'Z':
+            return True
+        time.sleep(0.02)
+    return False
+
+
+@pytest.mark.parametrize("stop", ["interrupt", "timeout"])
+def test_runner_stops_whole_group_gracefully(tmp_path, stop):
+    import signal
+
+    from autocoder._runner import CommandTimeout, SubprocessRunner
+    lock, child_pid = tmp_path / 'index.lock', tmp_path / 'child.pid'
+    # Like git: clean up the lock on SIGTERM. The background sleep stands in for ssh.
+    script = (f'trap \'rm -f "{lock}"; exit 143\' TERM; : > "{lock}"; '
+              f'sleep 30 & echo $! > "{child_pid}"; wait')
+
+    def interrupt(*_args):
+        raise KeyboardInterrupt  # what autocoder's SIGTERM handler does
+
+    previous = signal.signal(signal.SIGALRM, interrupt)
+    try:
+        if stop == "interrupt":
+            signal.setitimer(signal.ITIMER_REAL, 0.5)
+            with pytest.raises(KeyboardInterrupt):
+                SubprocessRunner().run(['sh', '-c', script])
+        else:
+            with pytest.raises(CommandTimeout):
+                SubprocessRunner().run(['sh', '-c', script], timeout_s=0.5)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+    assert not lock.exists()
+    assert _process_ends(int(child_pid.read_text()))
