@@ -499,6 +499,7 @@ def _sync_issue_author_attachments(
         remaining_bytes = max(0, _ATTACHMENT_TOTAL_CAP_BYTES - existing_bytes)
         if remaining_bytes == 0:
             skipped_urls.extend(to_download)
+            skip_reasons.extend((url, "cap") for url in to_download)
         else:
             auth_token = _github_auth_token(rt=rt)
             result = download_attachments(
@@ -746,15 +747,17 @@ def _find_or_adopt_pr(*, rt: _Runtime, issue_state: IssueState, issue_number: in
         if eligible(pr):
             candidates.append(pr)
     if not candidates and not issue_state.pr_search_done:
-        issue_state.pr_search_done = True
         found = rt.gh.search_open_prs_by_body_snippet(
             query=f'"Fixes #{issue_number}" author:{issue_author}', limit=100)
+        issue_state.pr_search_done = True
         for summary in found:
             if not eligible(summary):
                 continue
             pr = rt.gh.view_pr(number=summary.number, include_comments=False)
             if eligible(pr) and re.search(rf"(?im)\b(?:fix(?:es|ed)?|close[sd]?|resolve[sd]?)\s+#{issue_number}\b", pr.body):
                 candidates.append(pr)
+    if len(candidates) <= 1 and not conflicts and issue_state.last_notice and issue_state.last_notice.startswith(("multiple:", "authors:")):
+        issue_state.last_notice = None
     if len(candidates) == 1:
         return adopt(candidates[0])
     if not candidates and conflicts:

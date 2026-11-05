@@ -862,3 +862,13 @@ def test_missing_remote_branch_skips_pr_list_and_searches_once():
     for _ in range(3):
         assert _find_or_adopt_pr(rt=rt, issue_state=state, issue_number=1, issue_author='trusted-user') is None
     assert len(searches) == 1
+
+
+def test_resolved_pr_conflict_clears_old_notice():
+    gh = _GhStub()
+    gh.list_prs = lambda **kwargs: []
+    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(allowed_github_logins=('trusted-user',)),
+                         git=SimpleNamespace(remote_branch_exists=lambda **kwargs: True), managed_dir=Path('.'))
+    state = IssueState(branch='autocoder/issue-1-test', pr_search_done=True, last_notice='multiple:7,8')
+    assert _find_or_adopt_pr(rt=rt, issue_state=state, issue_number=1, issue_author='trusted-user') is None
+    assert state.last_notice is None
