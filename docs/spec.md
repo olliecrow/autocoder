@@ -416,9 +416,11 @@ over 1 MiB with an operator-review notice. Only new Git objects are read; unchan
 upstream blobs are excluded. Git or decoding failures block the push. Encoded or
 transformed secrets are not detected.
 
-Security CI runs weekly and on pushes/PRs. It checks commit messages and added
-file lines, including merge changes against the first parent. Invalid ranges
-and scan errors fail the check. Missing or zero push bases scan the tip commit.
+Security CI runs weekly and on pushes/PRs. It checks commit messages, paths, and
+added file lines, including merge changes against the first parent. Binary and
+`-diff` files are scanned as text. Invalid ranges and scan errors fail the check.
+A missing, zero, or unknown push base (and the weekly run) scans all history
+reachable from the tip; the pre-push hook does the same for a new branch.
 The path checker checks each match independently; gitleaks defaults alone do
 not cover all home paths.
 

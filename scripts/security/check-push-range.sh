@@ -8,10 +8,9 @@ usage() {
 usage: check-push-range.sh [--from <sha>] --to <sha>
 
 Scans every commit in <from>..<to>. Without --from, or with an all-zero
---from, scans the commits in <to> that are not on any remote, or <to>
-alone when all of them are. Merge commits are scanned against their
-first parent. With no flags, reads the range that pre-commit sets for
-pre-push hooks.
+--from, scans every commit reachable from <to>. Merge commits are scanned
+against their first parent. Binary and diff-disabled files are scanned as
+text. With no flags, reads the range that pre-commit sets for pre-push hooks.
 EOF
 }
 
@@ -68,9 +67,8 @@ fi
 [[ "$to_ref" == "$zero_ref" ]] && exit 0
 
 if [[ -z "$from_ref" || "$from_ref" == "$zero_ref" ]]; then
-  commit_list="$(git rev-list "$to_ref" --not --remotes)" ||
+  commit_list="$(git rev-list "$to_ref")" ||
     die "unable to list commits for the push range"
-  [[ -n "$commit_list" ]] || commit_list="$to_ref"
 else
   commit_list="$(git rev-list "${from_ref}..${to_ref}")" ||
     die "unable to list commits for the push range"
@@ -83,18 +81,26 @@ trap 'rm -rf -- "${tmp_dir}"' EXIT
 
 commit_msg_file="${tmp_dir}/commit_messages.txt"
 added_lines_file="${tmp_dir}/added_lines.txt"
+paths_file="${tmp_dir}/paths.txt"
 
 printf '%s\n' "$commit_list" |
   git log --stdin --no-walk=unsorted --format='%H%n%s%n%b%n' >"${commit_msg_file}"
 
 # Print only "+" lines inside hunks, so an added line that itself starts
-# with "++" is kept. --no-ext-diff and --no-textconv make git print the
-# real content instead of running a diff driver from the repo config.
+# with "++" is kept. --text prints binary and `-diff` files as text.
+# --no-ext-diff and --no-textconv make git print the real content instead
+# of running a diff driver from the repo config. Drop NULs and non-ASCII
+# bytes first: some awk builds stop at a NUL or reject non-UTF-8 input.
 printf '%s\n' "$commit_list" |
   git log --stdin --no-walk=unsorted -m --first-parent --format= --patch \
-    --no-color --unified=0 --no-ext-diff --no-textconv |
+    --text --no-color --unified=0 --no-ext-diff --no-textconv |
+  LC_ALL=C tr -d '\000' | LC_ALL=C tr -c '\11\12\40-\176' '?' |
   awk '/^diff / { in_hunk = 0; next } /^@@ / { in_hunk = 1; next } in_hunk && /^\+/ { sub(/^\+/, ""); print }' \
     >"${added_lines_file}"
 
 bash "${script_dir}/check-sensitive-text.sh" --context=push-commit-message "${commit_msg_file}"
 bash "${script_dir}/check-sensitive-text.sh" --context=push-added-lines "${added_lines_file}"
+
+printf '%s\n' "$commit_list" |
+  git -c core.quotePath=false diff-tree --stdin --root -r -m --first-parent --no-commit-id --name-only >"${paths_file}"
+bash "${script_dir}/check-sensitive-text.sh" --context=push-paths "${paths_file}"

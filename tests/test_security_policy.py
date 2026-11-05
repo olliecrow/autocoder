@@ -65,17 +65,12 @@ def test_push_range_scans_file_diffs_and_plus_lines(repo):
     assert check_range(repo, script, base, tip).returncode != 0
 
 
-@pytest.mark.parametrize("event,before", [("schedule", ""), ("push", ""), ("push", "0" * 40)])
-def test_ci_missing_base_scans_tip_and_file_diffs(repo, event, before, tmp_path):
-    setup_scripts(repo)
-    (repo / "bad").write_text("/home/" + "someone/project\n")
-    _git(repo, "add", "bad")
-    _git(repo, "commit", "-qm", "change")
-    tip = _git(repo, "rev-parse", "HEAD").strip()
+def run_ci_range(repo, tmp_path, *, event, before, tip, scanner=None):
+    """Run the CI wrapper with a fake gitleaks that records its arguments, or a real scanner."""
     fakebin = tmp_path / "bin"
-    fakebin.mkdir()
+    fakebin.mkdir(exist_ok=True)
     fake = fakebin / "gitleaks"
-    fake.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$SCAN_ARGS"\n')
+    fake.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "$SCAN_ARGS"\n{scanner or ""}\n')
     fake.chmod(0o700)
     args_file = tmp_path / "args"
     env = {**os.environ, "PATH": str(fakebin) + os.pathsep + os.environ["PATH"],
@@ -83,9 +78,85 @@ def test_ci_missing_base_scans_tip_and_file_diffs(repo, event, before, tmp_path)
            "GITHUB_SHA": tip, "SCAN_ARGS": str(args_file)}
     result = subprocess.run(["bash", "scripts/security/check-ci-range.sh"], cwd=repo, env=env,
                             capture_output=True)
+    return result, args_file.read_text() if args_file.exists() else ""
+
+
+def commit_bad_ancestor(repo):
+    (repo / "bad").write_text("/home/" + "someone/project\n")
+    _git(repo, "add", "bad")
+    _git(repo, "commit", "-qm", "change")
+    (repo / "later").write_text("clean\n")
+    _git(repo, "add", "later")
+    _git(repo, "commit", "-qm", "later")
+    return _git(repo, "rev-parse", "HEAD").strip()
+
+
+@pytest.mark.parametrize("event,before", [("schedule", ""), ("push", ""), ("push", "0" * 40), ("push", "b" * 40)])
+def test_ci_missing_base_scans_full_history_as_text(repo, event, before, tmp_path):
+    setup_scripts(repo)
+    tip = commit_bad_ancestor(repo)  # the secret is below the tip
+    result, args = run_ci_range(repo, tmp_path, event=event, before=before, tip=tip)
     assert result.returncode != 0  # shell scan backs up the gitleaks home-path blind spot
-    assert "--diff-merges=first-parent " + tip + "^!" in args_file.read_text()
+    assert "--log-opts=--text --no-ext-diff --no-textconv --diff-merges=first-parent " + tip + "\n" in args
     assert 'cron: "23 6 * * 1"' in (ROOT / ".github/workflows/security-policy.yml").read_text()
+
+
+@pytest.mark.parametrize("hide", ["nul", "diffattr"])
+def test_push_range_scans_binary_and_diff_disabled_files(repo, hide):
+    script = setup_scripts(repo)
+    base = _git(repo, "rev-parse", "HEAD").strip()
+    content = b"local: /home/" + b"someone/project\n"
+    if hide == "nul":
+        content += b"\x00"
+    else:
+        (repo / ".gitattributes").write_text("f.txt -diff\n")
+    (repo / "f.txt").write_bytes(content)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "change")
+    tip = _git(repo, "rev-parse", "HEAD").strip()
+    assert check_range(repo, script, base, tip).returncode != 0
+
+
+def test_push_range_without_base_scans_every_reachable_commit(repo):
+    script = setup_scripts(repo)
+    tip = commit_bad_ancestor(repo)
+    # A remote-tracking ref at the tip used to hide every commit from a zero-base scan.
+    _git(repo, "update-ref", "refs/remotes/origin/main", tip)
+    assert check_range(repo, script, "0" * 40, tip).returncode != 0
+
+
+def test_push_range_scans_paths(repo):
+    script = setup_scripts(repo)
+    base = _git(repo, "rev-parse", "HEAD").strip()
+    (repo / ("ghp_" + "A" * 30)).write_text("clean\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "change")
+    tip = _git(repo, "rev-parse", "HEAD").strip()
+    assert check_range(repo, script, base, tip).returncode != 0
+
+
+@pytest.mark.parametrize("hide", ["nul", "diffattr"])
+def test_ci_gitleaks_scans_binary_and_diff_disabled_files(repo, hide, tmp_path):
+    scanner = shutil.which("gitleaks")
+    if scanner is None:
+        pytest.skip("gitleaks is checked in security CI")
+    setup_scripts(repo)
+    shutil.copy(ROOT / ".gitleaks.toml", repo / ".gitleaks.toml")
+    base = _git(repo, "rev-parse", "HEAD").strip()
+    content = b"token: ghp_" + b"A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8" + b"\n"
+    if hide == "nul":
+        content += b"\x00"
+    else:
+        (repo / ".gitattributes").write_text("f.txt -diff\n")
+    (repo / "f.txt").write_bytes(content)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "change")
+    tip = _git(repo, "rev-parse", "HEAD").strip()
+    # The fake records arguments, then runs the real scanner with them.
+    result, _ = run_ci_range(repo, tmp_path, event="push", before=base, tip=tip,
+                             scanner=f'exec "{scanner}" "$@"')
+    assert result.returncode != 0
+    assert b"leaks found" in result.stdout + result.stderr
 
 
 def test_gitleaks_path_allowlist_is_per_secret_and_anchored(tmp_path):
