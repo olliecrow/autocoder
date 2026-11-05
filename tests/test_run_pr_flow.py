@@ -29,6 +29,9 @@ class _GitStub:
         self._head_sha = head_sha
         self.pushed: list[tuple[str, str]] = []
 
+    def current_branch(self, *, cwd: Path):
+        return "autocoder/issue-1-test"
+
     def status_porcelain(self, *, cwd: Path) -> str:
         return ""
 
@@ -196,8 +199,7 @@ def test_find_or_adopt_pr_rejects_non_allowlisted_pr_author() -> None:
     assert adopted is None
     assert issue_state.pr is None
     assert issue_state.branch == "autocoder/issue-1-test"
-    assert len(gh.issue_comments) == 1
-    assert "not allowlisted" in gh.issue_comments[0][1]
+    assert gh.issue_comments == []
 
 
 def test_find_or_adopt_pr_rejects_cross_repository_pr() -> None:
@@ -224,8 +226,7 @@ def test_find_or_adopt_pr_rejects_cross_repository_pr() -> None:
 
     assert adopted is None
     assert issue_state.pr is None
-    assert len(gh.issue_comments) == 1
-    assert "cross-repository" in gh.issue_comments[0][1]
+    assert gh.issue_comments == []
 
 
 def test_find_or_adopt_pr_rejects_pr_author_mismatch_with_issue_author() -> None:
@@ -748,3 +749,51 @@ def test_prepare_trusted_thread_context_filters_to_issue_author_non_bot_content(
     assert [c["id"] for c in payload["pr"]["comments"]] == ["pc1"]
     assert [r["id"] for r in payload["pr"]["reviews"]] == ["r1"]
     assert payload["pr"]["context_complete"] is True
+
+
+def test_fork_candidates_are_silent_across_polls():
+    from dataclasses import replace
+    pr = PullRequestDetail(7, 't', 'https://example.test/pr/7', 'OPEN', 'now',
+                           'trusted-user', 'autocoder/issue-1-test', 'main', True, None, 'Fixes #1', (), ())
+    gh = _GhAdoptStub(pr=pr)
+    gh.list_prs = lambda **kwargs: [pr]
+    searches = []
+    gh.search_open_prs_by_body_snippet = lambda **kwargs: searches.append(kwargs) or [replace(pr, author='outsider')]
+    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(allowed_github_logins=('trusted-user',)))
+    state = IssueState(branch=pr.head_ref_name)
+    for _ in range(3):
+        assert _find_or_adopt_pr(rt=rt, issue_state=state, issue_number=1, issue_author='trusted-user') is None
+    assert gh.issue_comments == []
+    assert len(searches) == 1
+
+
+def test_notice_is_posted_once():
+    from autocoder.run import _notice_once
+    gh = _GhStub()
+    state = IssueState()
+    for _ in range(3):
+        _notice_once(rt=SimpleNamespace(gh=gh), issue_state=state, issue_number=1,
+                     key='closed-pr:7', body='PR closed')
+    assert len(gh.issue_comments) == 1
+
+
+def test_push_refspec_is_explicit(tmp_path):
+    from autocoder.git import GitClient
+    calls = []
+    runner = SimpleNamespace(run=lambda args, **kwargs: calls.append(args) or SimpleNamespace(stdout=''))
+    GitClient(runner=runner).push(cwd=tmp_path, branch='autocoder/issue-1-test')
+    assert calls == [['git', 'push', '-u', 'origin', 'HEAD:refs/heads/autocoder/issue-1-test']]
+
+
+def test_wrong_branch_is_rejected_before_push(tmp_path):
+    import pytest
+    from autocoder.run import _expected_push_branch
+    state = IssueState(branch='autocoder/issue-1-test')
+    issue = SimpleNamespace(number=1, author='trusted-user')
+    for current in ('main', 'feature-x', ''):
+        git = SimpleNamespace(current_branch=lambda **kwargs: current)
+        rt = SimpleNamespace(git=git, default_branch='main')
+        with pytest.raises(RuntimeError, match='unexpected'):
+            _expected_push_branch(rt=rt, issue_state=state, issue=issue, pr=None, worktree_dir=tmp_path)
+    rt.git.current_branch = lambda **kwargs: state.branch
+    assert _expected_push_branch(rt=rt, issue_state=state, issue=issue, pr=None, worktree_dir=tmp_path) == state.branch

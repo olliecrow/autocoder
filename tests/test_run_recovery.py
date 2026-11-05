@@ -518,3 +518,36 @@ def test_run_one_iteration_retries_when_issue_author_comment_arrives_during_code
         allowed_logins=ALLOWED,
         comments=[(c.id, c.author, c.updated_at, c.body) for c in comments_after],
     )
+
+
+def test_post_codex_failure_requires_new_author_input(tmp_path, monkeypatch):
+    from dataclasses import replace
+    issue = IssueDetail(1, 't', 'https://example.test/issues/1', 'OPEN', 'now',
+                        'trusted-user', '', ('autocoder', 'autocoder:claimed'), ())
+    branch = 'autocoder/issue-1-test'
+    gh = _GhStub(issue=issue)
+    labels = []
+    gh.issue_add_labels = lambda **kwargs: labels.extend(kwargs['labels'])
+    git = _GitStub(default_sha='base', branch=branch, dirty_status=' M file')
+    git.is_ancestor = lambda **kwargs: True
+    rt = SimpleNamespace(repo=SimpleNamespace(owner='owner', name='repo', full_name='owner/repo'),
+                         cfg=SimpleNamespace(allowed_github_logins=ALLOWED, mentions=()),
+                         managed_dir=tmp_path, default_branch='main', gh=gh, git=git)
+    state = RepoState(issues={1: IssueState(branch=branch)})
+    worktree = tmp_path / 'worktree'
+    worktree.mkdir()
+    monkeypatch.setattr(runmod, 'issue_worktree_dir', lambda *args: worktree)
+    calls = []
+    def fail(**kwargs):
+        calls.append(1)
+        raise RuntimeError('push rejected')
+    monkeypatch.setattr(runmod, '_maybe_run_codex', fail)
+    for _ in range(3):
+        runmod._run_one_iteration(rt=rt, state=state)
+    assert calls == [1]
+    assert len(gh.issue_comments) == 1
+    assert labels == ['autocoder:needs-info']
+    comment = IssueComment('new', 'trusted-user', 'retrigger', 'later', 'later', '')
+    gh._issue = replace(issue, updated_at='later', comments=(comment,))
+    runmod._run_one_iteration(rt=rt, state=state)
+    assert calls == [1, 1]

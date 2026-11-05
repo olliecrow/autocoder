@@ -11,6 +11,9 @@ import tempfile
 class IssueState:
     branch: str | None = None
     pr: int | None = None
+    last_notice: str | None = None
+    pr_search_done: bool = False
+    run_failed: bool = False
     trusted_issue_body: str | None = None
     last_seen_issue_updated_at: str | None = None
     last_seen_pr_updated_at: str | None = None
@@ -47,6 +50,9 @@ def _optional_integer(value: object, *, field_name: str) -> int | None:
 
 def _issue_state_from_mapping(data: dict[str, object], *, field_prefix: str) -> IssueState:
     return IssueState(
+        last_notice=_optional_string(data.get("last_notice"), field_name="last_notice"),
+        pr_search_done=bool(data.get("pr_search_done", False)),
+        run_failed=bool(data.get("run_failed", False)),
         branch=_optional_string(data.get("branch"), field_name=f"{field_prefix}.branch"),
         pr=_optional_integer(data.get("pr"), field_name=f"{field_prefix}.pr"),
         trusted_issue_body=_optional_string(

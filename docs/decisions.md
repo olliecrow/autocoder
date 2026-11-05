@@ -302,3 +302,11 @@ References:
 ## Private state and setup validation
 
 Create the autocoder home directory with mode `0700` and the instance ID with `0600`; tighten existing modes. Reject invalid repo URLs, config, timeout, state, and empty allowlists before locking or external actions. Return status 2 with a short error. Read the timeout when the client starts, so help works with an invalid timeout.
+
+## PR trust, retries, and branch safety
+
+Ignore fork and non-allowlisted PRs without GitHub comments. Filter candidates before counting them. Search issue references once per ownership state; check exact issue numbers and the issue author. Report trusted conflicts and closed PRs once per situation.
+
+Never adopt the branch currently checked out by Codex. Before committing or pushing, require the expected issue branch (or a trusted PR head), never the default branch. Push `HEAD:refs/heads/<expected-branch>`.
+
+Consume input before post-run actions and cursor refresh. If these actions fail, keep a failure flag and require new issue-author input (`retrigger`) before another run, even with dirty files or pending base sync. Report the failure and add needs-info on a best-effort basis.

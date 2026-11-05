@@ -120,7 +120,7 @@ class GitClient:
         self._git(["commit", "-m", message], cwd=cwd)
 
     def push(self, *, cwd: Path, branch: str) -> None:
-        self._git(["push", "-u", "origin", branch], cwd=cwd)
+        self._git(["push", "-u", "origin", f"HEAD:refs/heads/{branch}"], cwd=cwd)
 
     def is_ancestor(self, *, cwd: Path, ancestor: str, descendant: str) -> bool:
         """

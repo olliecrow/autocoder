@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import signal
 import time
@@ -669,13 +670,8 @@ def _ensure_worktree(*, rt: _Runtime, issue_state: IssueState, issue: IssueDetai
 
     worktree_dir = issue_worktree_dir(rt.repo, issue.number)
     if worktree_dir.exists():
-        # Existing worktree: trust the branch currently checked out, but keep state in sync.
-        try:
-            br = rt.git.current_branch(cwd=worktree_dir)
-        except CommandError as e:
-            raise RuntimeError(f"worktree dir exists but is not usable: {worktree_dir}") from e
-        if br and br != issue_state.branch:
-            issue_state.branch = br
+        # Never adopt a branch selected by the worker process.
+        rt.git.current_branch(cwd=worktree_dir)
         return worktree_dir
 
     rt.git.worktree_add(
@@ -695,163 +691,80 @@ def _ensure_worktree(*, rt: _Runtime, issue_state: IssueState, issue: IssueDetai
     return worktree_dir
 
 
-def _find_or_adopt_pr(
-    *,
-    rt: _Runtime,
-    issue_state: IssueState,
-    issue_number: int,
-    issue_author: str,
-) -> PullRequestDetail | None:
-    def _reject_pr(*, pr: PullRequestDetail, why: str) -> None:
-        rt.gh.issue_comment(
-            number=issue_number,
-            body=_wrap_comment(
-                why,
-                redactions=[str(Path.home())],
-            ),
-        )
+def _notice_once(*, rt, issue_state: IssueState, issue_number: int, key: str, body: str) -> None:
+    if issue_state.last_notice == key:
+        return
+    rt.gh.issue_comment(number=issue_number, body=_wrap_comment(body, redactions=[str(Path.home())]))
+    issue_state.last_notice = key
+
+
+def _pr_adoption_problem(pr, *, issue_author: str, allowed_logins) -> str | None:
+    if pr.is_cross_repository or not is_allowed_login(pr.author, allowed_logins=allowed_logins):
+        return "untrusted"
+    if not _pr_author_matches_issue_author(pr_author=pr.author, issue_author=issue_author):
+        return "author does not match issue author"
+    return None
+
+
+def _find_or_adopt_pr(*, rt: _Runtime, issue_state: IssueState, issue_number: int,
+                      issue_author: str) -> PullRequestDetail | None:
+    def eligible(pr):
+        problem = _pr_adoption_problem(pr, issue_author=issue_author, allowed_logins=_cfg_allowed_logins(rt.cfg))
+        if problem == "untrusted":
+            _log("ignoring untrusted PR", level="warn", pr=pr.number)
+        elif problem:
+            _notice_once(rt=rt, issue_state=issue_state, issue_number=issue_number,
+                         key=f"author:{pr.number}", body=f"PR #{pr.number} {problem}.")
+        return problem is None
+
+    def adopt(pr):
+        issue_state.pr = pr.number
+        issue_state.branch = pr.head_ref_name
+        return pr
 
     if issue_state.pr is not None:
         try:
             pr = rt.gh.view_pr(number=issue_state.pr, include_comments=False)
-            if pr.is_cross_repository:
-                _reject_pr(
-                    pr=pr,
-                    why=(
-                        f"tracked PR #{pr.number} appears to be cross-repository (for example from a fork). "
-                        "autocoder will not adopt or mutate it. please create a PR from a branch on the base repo, "
-                        "or remove the `autocoder` label if no further work is needed."
-                    ),
-                )
-                issue_state.pr = None
-                return None
-            if not is_allowed_login(pr.author, allowed_logins=_cfg_allowed_logins(rt.cfg)):
-                _reject_pr(
-                    pr=pr,
-                    why=(
-                        f"tracked PR #{pr.number} author `{pr.author or '(unknown)'}` is not allowlisted. "
-                        "autocoder will not adopt or mutate this PR; please either close it and let autocoder "
-                        "open its own PR, or remove the `autocoder` label if no further work is needed."
-                    ),
-                )
-                issue_state.pr = None
-                return None
-            if not _pr_author_matches_issue_author(pr_author=pr.author, issue_author=issue_author):
-                _reject_pr(
-                    pr=pr,
-                    why=(
-                        f"tracked PR #{pr.number} author `{pr.author or '(unknown)'}` does not match issue author "
-                        f"`{issue_author or '(unknown)'}`. autocoder will not adopt or mutate this PR; please use a "
-                        "PR opened by the issue author."
-                    ),
-                )
-                issue_state.pr = None
-                return None
-            # Keep branch mapping consistent with the PR head; this matters for resume/catch-up.
-            if pr.head_ref_name and pr.head_ref_name != issue_state.branch:
-                issue_state.branch = pr.head_ref_name
-            return pr
         except CommandError:
             issue_state.pr = None
-
+        else:
+            if eligible(pr):
+                return adopt(pr)
+            issue_state.pr = None
+            return None
     if not issue_state.branch:
         return None
-
-    prs = rt.gh.list_prs(state="all", head=issue_state.branch, limit=5)
-    if len(prs) == 1:
-        pr = rt.gh.view_pr(number=prs[0].number, include_comments=False)
-        if pr.is_cross_repository:
-            _reject_pr(
-                pr=pr,
-                why=(
-                    f"found existing PR #{pr.number} for branch `{issue_state.branch}`, but it appears to be "
-                    "cross-repository (for example from a fork). autocoder will not adopt or mutate it; please "
-                    "create a PR from a branch on the base repo."
-                ),
-            )
-            return None
-        if not is_allowed_login(pr.author, allowed_logins=_cfg_allowed_logins(rt.cfg)):
-            _reject_pr(
-                pr=pr,
-                why=(
-                    f"found existing PR #{pr.number} for branch `{issue_state.branch}`, but PR author "
-                    f"`{pr.author or '(unknown)'}` is not allowlisted. autocoder will not adopt or mutate it; "
-                    "please close it and let autocoder open its own PR (or remove the `autocoder` label)."
-                ),
-            )
-            return None
-        if not _pr_author_matches_issue_author(pr_author=pr.author, issue_author=issue_author):
-            _reject_pr(
-                pr=pr,
-                why=(
-                    f"found existing PR #{pr.number} for branch `{issue_state.branch}`, but PR author "
-                    f"`{pr.author or '(unknown)'}` does not match issue author `{issue_author or '(unknown)'}`. "
-                    "autocoder will not adopt or mutate it; please use a PR opened by the issue author."
-                ),
-            )
-            return None
-        issue_state.pr = pr.number
-        if pr.head_ref_name and pr.head_ref_name != issue_state.branch:
-            issue_state.branch = pr.head_ref_name
-        return pr
-    if len(prs) > 1:
-        rt.gh.issue_comment(
-            number=issue_number,
-            body=_wrap_comment(
-                "multiple open PRs appear to exist for this issue branch; please confirm which PR autocoder should use.",
-                redactions=[str(Path.home())],
-            ),
-        )
-        return None
-
-    # Fallback: adopt an existing open PR that references the issue via `Fixes #<n>`.
-    snippet = f"Fixes #{issue_number}"
-    found = rt.gh.search_open_prs_by_body_snippet(query=snippet, limit=5)
-    if len(found) == 1:
-        pr = rt.gh.view_pr(number=found[0].number, include_comments=False)
-        if pr.is_cross_repository:
-            _reject_pr(
-                pr=pr,
-                why=(
-                    f"found existing PR #{pr.number} referencing `{snippet}`, but it appears to be cross-repository "
-                    "(for example from a fork). autocoder will not adopt or mutate it; please create a PR from a "
-                    "branch on the base repo, or remove the `autocoder` label if that PR is the desired fix."
-                ),
-            )
-            return None
-        if not is_allowed_login(pr.author, allowed_logins=_cfg_allowed_logins(rt.cfg)):
-            _reject_pr(
-                pr=pr,
-                why=(
-                    f"found existing PR #{pr.number} referencing `{snippet}`, but PR author "
-                    f"`{pr.author or '(unknown)'}` is not allowlisted. autocoder will not adopt or mutate it; "
-                    "please close it and let autocoder open its own PR (or remove the `autocoder` label)."
-                ),
-            )
-            return None
-        if not _pr_author_matches_issue_author(pr_author=pr.author, issue_author=issue_author):
-            _reject_pr(
-                pr=pr,
-                why=(
-                    f"found existing PR #{pr.number} referencing `{snippet}`, but PR author "
-                    f"`{pr.author or '(unknown)'}` does not match issue author `{issue_author or '(unknown)'}`. "
-                    "autocoder will not adopt or mutate it; please use a PR opened by the issue author."
-                ),
-            )
-            return None
-        issue_state.pr = pr.number
-        if pr.head_ref_name and pr.head_ref_name != issue_state.branch:
-            issue_state.branch = pr.head_ref_name
-        return pr
-    if len(found) > 1:
-        rt.gh.issue_comment(
-            number=issue_number,
-            body=_wrap_comment(
-                f"multiple open PRs reference `{snippet}`; please confirm which PR autocoder should use.",
-                redactions=[str(Path.home())],
-            ),
-        )
+    candidates = []
+    for summary in rt.gh.list_prs(state="all", head=issue_state.branch, limit=100):
+        pr = rt.gh.view_pr(number=summary.number, include_comments=False)
+        if eligible(pr):
+            candidates.append(pr)
+    if not candidates and not issue_state.pr_search_done:
+        issue_state.pr_search_done = True
+        found = rt.gh.search_open_prs_by_body_snippet(
+            query=f'"Fixes #{issue_number}" author:{issue_author}', limit=100)
+        for summary in found:
+            pr = rt.gh.view_pr(number=summary.number, include_comments=False)
+            if eligible(pr) and re.search(rf"(?im)\b(?:fix(?:es|ed)?|close[sd]?|resolve[sd]?)\s+#{issue_number}\b", pr.body):
+                candidates.append(pr)
+    if len(candidates) == 1:
+        return adopt(candidates[0])
+    if len(candidates) > 1:
+        key = "multiple:" + ",".join(str(pr.number) for pr in sorted(candidates, key=lambda pr: pr.number))
+        _notice_once(rt=rt, issue_state=issue_state, issue_number=issue_number, key=key,
+                     body="multiple trusted PRs exist; please confirm which PR to use.")
     return None
+
+
+def _expected_push_branch(*, rt, issue_state, issue, pr, worktree_dir):
+    expected = pr.head_ref_name if pr is not None else issue_state.branch
+    if (not expected or expected == rt.default_branch
+            or (pr is None and not re.fullmatch(rf"autocoder/issue-{issue.number}-[a-z0-9-]+", expected))
+            or (pr is not None and _pr_adoption_problem(pr, issue_author=issue.author,
+                                                       allowed_logins=_cfg_allowed_logins(rt.cfg)))
+            or rt.git.current_branch(cwd=worktree_dir) != expected):
+        raise RuntimeError("worktree is on an unexpected or unsafe branch; restore the issue branch and reply retrigger")
+    return expected
 
 
 def _cleanup_local(*, rt: _Runtime, issue_number: int, issue_state: IssueState) -> None:
@@ -1513,6 +1426,8 @@ def _maybe_run_codex(
         except CommandError:
             pass
 
+    expected_branch = _expected_push_branch(rt=rt, issue_state=issue_state, issue=issue,
+                                            pr=pr, worktree_dir=worktree_dir)
     # Commit/push if there are remaining local changes after codex execution.
     if rt.git.status_porcelain(cwd=worktree_dir).strip():
         _log("git status dirty after codex; committing", issue=issue.number, pr=pr_number)
@@ -1523,33 +1438,7 @@ def _maybe_run_codex(
     else:
         _log("git status clean after codex; skipping commit", level="debug", issue=issue.number, pr=pr_number)
 
-    # Push when the remote branch is safe to mutate.
-    if issue_state.branch:
-        safe_to_push = pr is None
-        if pr is not None:
-            safe_to_push = (
-                (not pr.is_cross_repository)
-                and is_allowed_login(pr.author, allowed_logins=_cfg_allowed_logins(rt.cfg))
-                and _pr_author_matches_issue_author(pr_author=pr.author, issue_author=issue.author)
-            )
-        else:
-            safe_to_push = issue_state.branch.startswith("autocoder/")
-
-        if safe_to_push:
-            _log("pushing branch", issue=issue.number, pr=pr_number, branch=issue_state.branch)
-            rt.git.push(cwd=worktree_dir, branch=issue_state.branch)
-            _log("push complete", issue=issue.number, pr=pr_number, branch=issue_state.branch)
-        else:
-            _log(
-                "skipping push: unsafe PR/branch",
-                level="warn",
-                issue=issue.number,
-                pr=pr_number,
-                branch=issue_state.branch,
-                pr_author=pr.author if pr is not None else None,
-                issue_author=issue.author,
-                pr_cross_repo=pr.is_cross_repository if pr is not None else None,
-            )
+    rt.git.push(cwd=worktree_dir, branch=expected_branch)
 
     pr_title = out.pr_title or f"issue #{issue.number}: {issue.title}"
     pr_body_src = out.pr_body_markdown or out.issue_comment_markdown or ""
@@ -1596,72 +1485,11 @@ def _maybe_run_codex(
 
     # Ensure PR exists.
     if issue_state.pr is None:
-        existing = rt.gh.list_prs(state="all", head=issue_state.branch, limit=5) if issue_state.branch else []
-        if len(existing) == 1:
-            adopted = rt.gh.view_pr(number=existing[0].number, include_comments=False)
-            if adopted.is_cross_repository:
-                rt.gh.issue_comment(
-                    number=issue.number,
-                    body=_wrap_comment(
-                        f"found existing PR #{adopted.number} for branch `{issue_state.branch}`, but it appears to be "
-                        "cross-repository (for example from a fork). autocoder will not adopt or mutate it; please "
-                        "create a PR from a branch on the base repo.",
-                        mentions=filter_allowed_logins(
-                            [issue.author, *rt.cfg.mentions],
-                            allowed_logins=_cfg_allowed_logins(rt.cfg),
-                        ),
-                        redactions=redactions,
-                    ),
-                )
-                return
-            if not is_allowed_login(adopted.author, allowed_logins=_cfg_allowed_logins(rt.cfg)):
-                rt.gh.issue_comment(
-                    number=issue.number,
-                    body=_wrap_comment(
-                        f"found existing PR #{adopted.number} for branch `{issue_state.branch}`, but PR author "
-                        f"`{adopted.author or '(unknown)'}` is not allowlisted. autocoder will not adopt or mutate it; "
-                        "please close it and let autocoder open its own PR (or remove the `autocoder` label).",
-                        mentions=filter_allowed_logins(
-                            [issue.author, *rt.cfg.mentions],
-                            allowed_logins=_cfg_allowed_logins(rt.cfg),
-                        ),
-                        redactions=redactions,
-                    ),
-                )
-                return
-            if not _pr_author_matches_issue_author(pr_author=adopted.author, issue_author=issue.author):
-                rt.gh.issue_comment(
-                    number=issue.number,
-                    body=_wrap_comment(
-                        f"found existing PR #{adopted.number} for branch `{issue_state.branch}`, but PR author "
-                        f"`{adopted.author or '(unknown)'}` does not match issue author `{issue.author or '(unknown)'}`. "
-                        "autocoder will not adopt or mutate it; please use a PR opened by the issue author.",
-                        mentions=filter_allowed_logins(
-                            [issue.author, *rt.cfg.mentions],
-                            allowed_logins=_cfg_allowed_logins(rt.cfg),
-                        ),
-                        redactions=redactions,
-                    ),
-                )
-                return
-            issue_state.pr = adopted.number
-            if adopted.head_ref_name and adopted.head_ref_name != issue_state.branch:
-                issue_state.branch = adopted.head_ref_name
-            _log("adopted existing PR for branch", issue=issue.number, pr=issue_state.pr, branch=issue_state.branch)
-        elif len(existing) > 1:
-            rt.gh.issue_comment(
-                number=issue.number,
-                body=_wrap_comment(
-                    "multiple PRs exist for this issue branch; please confirm which PR autocoder should use.",
-                    mentions=filter_allowed_logins(
-                        [issue.author, *rt.cfg.mentions],
-                        allowed_logins=_cfg_allowed_logins(rt.cfg),
-                    ),
-                    redactions=redactions,
-                ),
-            )
+        adopted = _find_or_adopt_pr(rt=rt, issue_state=issue_state, issue_number=issue.number,
+                                   issue_author=issue.author)
+        if adopted is None and issue_state.last_notice and issue_state.last_notice.startswith("multiple:"):
             return
-        else:
+        if adopted is None:
             try:
                 created = rt.gh.create_pr(
                     title=pr_title,
@@ -1949,18 +1777,9 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
                 continue
 
             if pr_meta is not None and pr_meta.state != "OPEN":
-                rt.gh.issue_comment(
-                    number=issue_meta.number,
-                    body=_wrap_comment(
-                        f"PR #{pr_meta.number} is `{pr_meta.state}` (not merged). "
-                        "Please reopen it or remove the `autocoder` label if no further work is needed.",
-                        mentions=filter_allowed_logins(
-                            [issue_meta.author, *rt.cfg.mentions],
-                            allowed_logins=_cfg_allowed_logins(rt.cfg),
-                        ),
-                        redactions=[str(Path.home())],
-                    ),
-                )
+                _notice_once(rt=rt, issue_state=issue_state, issue_number=issue_meta.number,
+                             key=f"closed-pr:{pr_meta.number}",
+                             body=f"PR #{pr_meta.number} is `{pr_meta.state}` (not merged). Please reopen it or remove the `autocoder` label.")
                 issue_after = rt.gh.view_issue(number=issue_meta.number, include_comments=False)
                 issue_state.last_seen_issue_updated_at = issue_after.updated_at
                 issue_state.last_seen_pr_updated_at = pr_meta.updated_at
@@ -2060,6 +1879,8 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
                     allowed_changed = True
                     issue_author_input_changed = True
 
+            if issue_state.run_failed and not issue_author_input_changed:
+                continue
             if not allowed_changed:
                 # Something changed on GitHub, but not in issue-author instructions.
                 _log(
@@ -2097,14 +1918,34 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
                 triggers=list(trigger_reasons),
                 worktree_dir=worktree_dir,
             )
-            _maybe_run_codex(
-                rt=rt,
-                issue_state=issue_state,
-                issue=issue_full,
-                pr=pr_meta,
-                worktree_dir=worktree_dir,
-                trigger_reasons=tuple(trigger_reasons),
-            )
+            # Persist consumed input before reporting or refresh, which can also fail.
+            issue_state.last_seen_issue_updated_at = issue_full.updated_at
+            issue_state.last_seen_allowed_issue_digest = issue_digest_cur
+            issue_state.last_seen_pr_updated_at = pr_updated_at
+            issue_state.last_seen_allowed_pr_digest = pr_digest_cur
+            try:
+                _maybe_run_codex(
+                    rt=rt,
+                    issue_state=issue_state,
+                    issue=issue_full,
+                    pr=pr_meta,
+                    worktree_dir=worktree_dir,
+                    trigger_reasons=tuple(trigger_reasons),
+                )
+                issue_state.run_failed = False
+                issue_state.last_notice = None
+            except Exception as exc:
+                issue_state.run_failed = True
+                _log_exception("post-Codex action failed", exc, issue=issue_full.number)
+                try:
+                    _notice_once(rt=rt, issue_state=issue_state, issue_number=issue_full.number,
+                                 key="run-failed", body="run failed after processing input; reply `retrigger` to retry.")
+                except Exception:
+                    pass
+                try:
+                    rt.gh.issue_add_labels(number=issue_full.number, labels=[_LABEL_NEEDS_INFO])
+                except Exception:
+                    pass
             ran_codex += 1
 
             # Refresh cursors after any actions. If trusted issue-author input changed while codex
