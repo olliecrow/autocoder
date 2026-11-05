@@ -55,6 +55,7 @@ class Runner:
         timeout_s: float | None = None,
         check: bool = True,
         log_path: Path | None = None,
+        encoding: str | None = None,
     ) -> CmdResult:
         raise NotImplementedError
 
@@ -70,6 +71,7 @@ class SubprocessRunner(Runner):
         timeout_s: float | None = None,
         check: bool = True,
         log_path: Path | None = None,
+        encoding: str | None = None,
     ) -> CmdResult:
         argv = list(args)
         if log_path is not None:
@@ -82,6 +84,7 @@ class SubprocessRunner(Runner):
                 env={**os.environ, **env} if env else None,
                 input=input_text,
                 text=True,
+                encoding=encoding,
                 capture_output=True,
                 timeout=timeout_s,
             )

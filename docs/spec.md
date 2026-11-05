@@ -411,10 +411,11 @@ Redact known token formats (GitHub, AWS, OpenAI/Anthropic-style `sk-`, Slack tok
 Before each push, scan outgoing commit messages, filenames, and new blob contents
 (`HEAD --not origin/<default-branch> origin/<branch>`). Block known token formats
 and secret-named environment or `.env` values of at least eight characters.
-Scan UTF-8 binary blobs too, including NUL bytes. Block non-UTF-8 blobs and blobs
-over 1 MiB with an operator-review notice. Only new Git objects are read; unchanged
-upstream blobs are excluded. Git or decoding failures block the push. Encoded or
-transformed secrets are not detected.
+Binary and large blobs are scanned byte for byte (read as latin-1; UTF-8 text is
+also decoded as UTF-8), so they need no override. Only blobs over GitHub's 100 MiB
+file limit block the push. Only new Git objects are read; unchanged upstream blobs
+are excluded. Git failures block the push. Encoded, transformed, or UTF-16
+secrets are not detected.
 
 Security CI runs weekly and on pushes/PRs. It checks commit messages, paths, and
 added file lines, including merge changes against the first parent. Binary and

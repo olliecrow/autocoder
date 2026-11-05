@@ -9,6 +9,7 @@ from pathlib import Path
 
 from ._runner import CommandError, Runner
 
+_MAX_BLOB_BYTES = 100 * 1024 * 1024  # GitHub rejects larger files.
 _CONFLICT_MARKER = re.compile(rb"^(?:<{7}|\|{7}|>{7})(?: |$)", re.MULTILINE)
 
 
@@ -161,7 +162,12 @@ class GitClient:
         self._git(["commit", "-m", message], cwd=cwd)
 
     def outgoing_scan_text(self, *, cwd: Path, exclude_refs: Sequence[str]) -> Iterable[str]:
-        """Scan metadata and each new blob, with a bounded per-blob read."""
+        """
+        Yield metadata and each new blob for scanning, one blob at a time.
+
+        Blobs are read as latin-1, which decodes any bytes, so binary files are scanned
+        without a bypass (secret patterns are ASCII). UTF-8 text is decoded as UTF-8 too.
+        """
         revisions = ["HEAD", "--not", *exclude_refs, "--"]
         yield self._git(["log", "--format=%B", "--name-only", "--diff-merges=first-parent", *revisions], cwd=cwd)
         objects = self._git(["rev-list", "--objects", *revisions], cwd=cwd)
@@ -177,12 +183,15 @@ class GitClient:
             oid, kind, size = line.split()
             if kind != "blob":
                 continue
-            if int(size) > 1024 * 1024:
-                raise RuntimeError("push blocked: outgoing blob exceeds the 1 MiB scan limit; operator review required")
-            try:
-                yield self._git(["cat-file", "blob", oid], cwd=cwd)
-            except UnicodeError:
-                raise RuntimeError("push blocked: outgoing binary blob is not UTF-8; operator review required") from None
+            if int(size) > _MAX_BLOB_BYTES:
+                raise RuntimeError("push blocked: an outgoing file exceeds GitHub's 100 MiB file limit")
+            raw = self._runner.run(["git", "cat-file", "blob", oid], cwd=cwd, check=True, encoding="latin-1").stdout
+            yield raw
+            if not raw.isascii():
+                try:
+                    yield raw.encode("latin-1").decode("utf-8")
+                except UnicodeDecodeError:
+                    pass
 
     def push(self, *, cwd: Path, branch: str) -> None:
         self._git(["push", "-u", "origin", f"HEAD:refs/heads/{branch}"], cwd=cwd)

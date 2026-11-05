@@ -124,13 +124,29 @@ def test_outgoing_scan_catches_secret_in_each_surface(repo, location):
     assert any(contains_likely_secret(text) for text in git.outgoing_scan_text(cwd=repo, exclude_refs=[base]))
 
 
-@pytest.mark.parametrize("content", [b"\xff\x00", b"x" * (1024 * 1024 + 1)])
-def test_outgoing_scan_blocks_unscannable_blobs(repo, content):
+@pytest.mark.parametrize("prefix", [b"\xff\x00", b"x" * (2 * 1024 * 1024)])
+def test_outgoing_scan_reads_binary_and_large_blobs(repo, prefix, monkeypatch):
+    from autocoder.security import contains_likely_secret
     base = _git(repo, "rev-parse", "HEAD").strip()
-    (repo / "new").write_bytes(content)
+    (repo / "image.bin").write_bytes(prefix + b"\x89PNG\x00\xfe")
+    (repo / "secret.bin").write_bytes(prefix + b"\x00" + ("ghp_" + "A" * 30).encode())
+    (repo / "notes.txt").write_text("caf\u00e9 " + "pass\u00e9-value-123\n", encoding="utf-8")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-qm", "change")
-    with pytest.raises(RuntimeError, match="push blocked"):
+    texts = list(GitClient(runner=SubprocessRunner()).outgoing_scan_text(cwd=repo, exclude_refs=[base]))
+    assert sum(contains_likely_secret(text) for text in texts) == 1
+    monkeypatch.setenv("NOTES_PASSWORD", "pass\u00e9-value-123")  # a non-ASCII value still matches UTF-8 text
+    assert sum(contains_likely_secret(text) for text in texts) == 2
+
+
+def test_outgoing_scan_blocks_files_over_github_limit(repo, monkeypatch):
+    import autocoder.git as git_module
+    monkeypatch.setattr(git_module, "_MAX_BLOB_BYTES", 10)
+    base = _git(repo, "rev-parse", "HEAD").strip()
+    (repo / "new").write_bytes(b"x" * 11)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "change")
+    with pytest.raises(RuntimeError, match="100 MiB"):
         list(GitClient(runner=SubprocessRunner()).outgoing_scan_text(cwd=repo, exclude_refs=[base]))
 
 
