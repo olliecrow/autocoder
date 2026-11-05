@@ -327,7 +327,7 @@ Default to `codex_sandbox = "workspace-write"`. Keep unrestricted execution as a
 
 ## Bounded worker output and process lifetime
 
-Stream worker output to `.autocoder/plan/codex-run.log` with mode `0600`, replacing the previous log. Never send the log to GitHub. Run the worker and every `git`/`gh` command in a new session (own process group, no controlling terminal; stdin is empty unless autocoder sends input, so commands cannot prompt). On timeout or interruption, send SIGTERM to the group so git can remove its lock files, wait (10 s for the worker, 5 s otherwise), then SIGKILL what remains. This bounds output memory and prevents abandoned commands and stale locks after a cancelled run. A lock left after the SIGKILL fallback is not removed automatically.
+Stream worker output to `.autocoder/plan/codex-run.log` with mode `0600`, replacing the previous log. Never send the log to GitHub. Run the worker and every other command autocoder starts (`git`, `gh`) in a new session (own process group, no controlling terminal; stdin is empty unless autocoder sends input, so commands cannot prompt). On timeout or interruption, send SIGTERM to the group so git can remove its lock files, wait (10 s for the worker, 5 s otherwise), then SIGKILL what remains. This bounds output memory and prevents abandoned commands and stale locks after a cancelled run. A lock left after the SIGKILL fallback is not removed automatically.
 
 ## Claims converge before execution
 

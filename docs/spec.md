@@ -349,7 +349,9 @@ that starts with `<<<<<<<`, `|||||||`, or `>>>>>>>` (followed by a space or the
 line end) blocks the run: nothing is committed or pushed, and one notice per run
 lists the files and asks for `retrigger`. A lone `=======` line does not block.
 Otherwise autocoder runs `git add -A`, requires no unmerged paths, commits the
-merge, and pushes. Outside a merge, any unmerged path blocks the run.
+merge, and pushes. A conflict without marker text (binary or modify/delete) counts
+as resolved by the file state Codex leaves. Outside a merge, any unmerged path
+blocks the run.
 
 A clean merge followed by no_action or needs_info stays local. The default SHA
 cursor records an attempt, not publication. When the remote issue branch exists
@@ -431,7 +433,7 @@ Default to `codex_sandbox = "workspace-write"`. Keep unrestricted execution as a
 
 ## Bounded worker output and process lifetime
 
-Stream worker output to `.autocoder/plan/codex-run.log` with mode `0600`, replacing the previous log. Never send the log to GitHub. Run the worker and every `git`/`gh` command in a new session (own process group, no controlling terminal; stdin is empty unless autocoder sends input, so commands cannot prompt). On timeout or interruption, send SIGTERM to the group so git can remove its lock files, wait (10 s for the worker, 5 s otherwise), then SIGKILL what remains. This bounds output memory and prevents abandoned commands and stale locks after a cancelled run. A lock left after the SIGKILL fallback is not removed automatically.
+Stream worker output to `.autocoder/plan/codex-run.log` with mode `0600`, replacing the previous log. Never send the log to GitHub. Run the worker and every other command autocoder starts (`git`, `gh`) in a new session (own process group, no controlling terminal; stdin is empty unless autocoder sends input, so commands cannot prompt). On timeout or interruption, send SIGTERM to the group so git can remove its lock files, wait (10 s for the worker, 5 s otherwise), then SIGKILL what remains. This bounds output memory and prevents abandoned commands and stale locks after a cancelled run. A lock left after the SIGKILL fallback is not removed automatically.
 
 ## Claims converge before execution
 

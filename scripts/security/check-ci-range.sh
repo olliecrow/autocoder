@@ -14,6 +14,7 @@ fi
 # all history reachable from the tip.
 if [[ -z "$base" || "$base" == "0000000000000000000000000000000000000000" ]] ||
    ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+  echo "push base missing or unknown; scanning all history reachable from ${tip}" >&2
   range="$tip"
   base=""
 else
