@@ -551,3 +551,22 @@ def test_post_codex_failure_requires_new_author_input(tmp_path, monkeypatch):
     gh._issue = replace(issue, updated_at='later', comments=(comment,))
     runmod._run_one_iteration(rt=rt, state=state)
     assert calls == [1, 1]
+
+
+def test_foreign_latest_claim_stops_before_codex(tmp_path, monkeypatch):
+    body = '[autocoder]\n\ninstance: 12345678-1234-1234-1234-123456789abc\nbranch: autocoder/issue-1-test'
+    comment = IssueComment('claim', 'trusted-user', body, 'now', 'now', '')
+    issue = IssueDetail(1, 't', '', 'OPEN', 'now', 'trusted-user', '',
+                        ('autocoder', 'autocoder:claimed'), (comment,))
+    gh = _GhStub(issue=issue)
+    git = _GitStub(default_sha='base', branch='autocoder/issue-1-test', dirty_status='')
+    rt = SimpleNamespace(repo=SimpleNamespace(owner='owner', name='repo', full_name='owner/repo'),
+                         cfg=SimpleNamespace(allowed_github_logins=ALLOWED, mentions=()),
+                         instance_id='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+                         managed_dir=tmp_path, default_branch='main', gh=gh, git=git)
+    state = RepoState(issues={1: IssueState(branch='autocoder/issue-1-test', last_seen_default_branch_sha='base')})
+    monkeypatch.setattr(runmod, '_maybe_run_codex', lambda **kwargs: (_ for _ in ()).throw(AssertionError('must not run')))
+    monkeypatch.setattr(runmod, '_cleanup_local', lambda **kwargs: None)
+    runmod._run_one_iteration(rt=rt, state=state)
+    assert state.issues == {}
+    assert gh.issue_comments == []

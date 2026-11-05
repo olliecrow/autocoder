@@ -322,3 +322,11 @@ Redact known token and private-key formats in every GitHub title, body, and comm
 ## Execution isolation default
 
 Default to `codex_sandbox = "workspace-write"`. Keep unrestricted execution as an explicit `danger-full-access` opt-in for isolated workers. This changes earlier behavior: sandboxed tasks can fail when they need network or external filesystem access. autocoder performs its own commit and push outside the sandbox. Use a single-repo fine-grained GitHub token, a repo deploy key, and default-branch protection. Trust repo writers and allowlisted issue authors at code-execution level. No live Codex run was used to validate sandbox-dependent task capabilities.
+
+## Bounded worker output and process lifetime
+
+Stream worker output to `.autocoder/plan/codex-run.log` with mode `0600`, replacing the previous log. Never send the log to GitHub. Run the worker in a new process group; terminate the group on timeout or interruption, then kill remaining children. This bounds output memory and prevents abandoned worker commands after a cancelled run.
+
+## Claims converge before execution
+
+Post the claim comment before adding the claimed label, so a failed comment cannot leave a labelled orphan. Read claims back after claiming and before worker execution. If another instance owns the latest valid allowlisted claim, stop local work without changing shared labels or PRs. Accept only issue-specific autocoder branch names from claim comments.

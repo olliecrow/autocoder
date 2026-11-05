@@ -112,6 +112,7 @@ class CodexClient:
             input_text=prompt,
             timeout_s=float(self._timeout_s),
             check=True,
+            log_path=schema_path.parent / "codex-run.log",
         )
 
         raw = output_path.read_text(encoding="utf-8").strip()

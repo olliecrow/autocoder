@@ -217,3 +217,9 @@ def test_issue_claimed_by_this_instance_accepts_latest_matching_claim() -> None:
         ),
     )
     assert _issue_claimed_by_this_instance(rt=rt, issue=issue) == "autocoder/issue-1-new"
+
+
+def test_claim_rejects_unsafe_branch():
+    for branch in ('main', '--option', 'autocoder/issue-1-../bad', 'feature-x'):
+        body = '[autocoder]\n\ninstance: 12345678-1234-1234-1234-123456789abc\nbranch: ' + branch
+        assert parse_claim_comment(body) is None

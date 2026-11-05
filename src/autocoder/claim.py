@@ -32,8 +32,11 @@ def parse_claim_comment(body: str) -> ClaimInfo | None:
     if not m_id or not m_branch:
         return None
 
+    branch = m_branch.group("branch").strip()
+    if not re.fullmatch(r"autocoder/issue-[1-9][0-9]*-[a-z0-9-]+", branch):
+        return None
     return ClaimInfo(
         instance_id=m_id.group("id").strip(),
-        branch=m_branch.group("branch").strip(),
+        branch=branch,
     )
 

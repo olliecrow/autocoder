@@ -628,7 +628,7 @@ def _issue_claimed_by_this_instance(*, rt: _Runtime, issue: IssueDetail) -> str 
         if not is_allowed_login(c.author, allowed_logins=_cfg_allowed_logins(rt.cfg)):
             continue
         info = parse_claim_comment(c.body or "")
-        if not info:
+        if not info or not info.branch.startswith(f"autocoder/issue-{issue.number}-"):
             continue
         claims.append(
             (
@@ -655,8 +655,6 @@ def _branch_for_issue(*, issue_number: int, issue_title: str) -> str:
 
 
 def _claim_issue(*, rt: _Runtime, issue: IssueSummary, branch: str) -> None:
-    rt.gh.issue_add_labels(number=issue.number, labels=[_LABEL_CLAIMED])
-
     body = "\n".join(
         [
             "claimed by autocoder.",
@@ -667,6 +665,7 @@ def _claim_issue(*, rt: _Runtime, issue: IssueSummary, branch: str) -> None:
     )
     redactions = [str(Path.home())]
     rt.gh.issue_comment(number=issue.number, body=_wrap_comment(body, redactions=redactions))
+    rt.gh.issue_add_labels(number=issue.number, labels=[_LABEL_CLAIMED])
 
 
 def _ensure_worktree(*, rt: _Runtime, issue_state: IssueState, issue: IssueDetail) -> Path:
@@ -1193,6 +1192,7 @@ def _maybe_run_codex(
     pr_number = pr.number if pr is not None else None
     _log(
         "running codex",
+        log_file=str(plan_dir / "codex-run.log").replace(str(Path.home()), "~"),
         issue=issue.number,
         pr=pr_number,
         branch=issue_state.branch,
@@ -1202,6 +1202,7 @@ def _maybe_run_codex(
     try:
         out = rt.codex.run_exec(workdir=worktree_dir, prompt=prompt, schema_path=schema_path, output_path=output_path)
     except Exception as e:
+        issue_state.run_failed = True
         dt = time.time() - t0
         _log_exception(
             "codex failed",
@@ -1622,6 +1623,10 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
             branch = _branch_for_issue(issue_number=it.number, issue_title=it.title)
             _log("claiming issue", issue=it.number, branch=branch)
             _claim_issue(rt=rt, issue=it, branch=branch)
+            detail = rt.gh.view_issue(number=it.number, include_comments=True)
+            if _issue_claimed_by_this_instance(rt=rt, issue=detail) != branch:
+                _log("claim lost to another instance", issue=it.number)
+                continue
             st = IssueState(branch=branch, pr=None)
             _reset_issue_cursors(st)
             state.issues[it.number] = st
@@ -1914,6 +1919,13 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
                     trigger_reasons=tuple(trigger_reasons),
                 )
 
+            claim_context = rt.gh.view_issue(number=issue_number, include_comments=True)
+            has_claim = any(parse_claim_comment(c.body) and is_allowed_login(c.author, allowed_logins=_cfg_allowed_logins(rt.cfg))
+                            for c in claim_context.comments)
+            if has_claim and not _issue_claimed_by_this_instance(rt=rt, issue=claim_context):
+                _cleanup_local(rt=rt, issue_number=issue_number, issue_state=issue_state)
+                state.issues.pop(issue_number, None)
+                continue
             worktree_dir = _ensure_worktree(rt=rt, issue_state=issue_state, issue=issue_full)
             _log(
                 "triggering codex",
@@ -1929,6 +1941,7 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
             issue_state.last_seen_pr_updated_at = pr_updated_at
             issue_state.last_seen_allowed_pr_digest = pr_digest_cur
             try:
+                issue_state.run_failed = False
                 _maybe_run_codex(
                     rt=rt,
                     issue_state=issue_state,
@@ -1937,14 +1950,14 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
                     worktree_dir=worktree_dir,
                     trigger_reasons=tuple(trigger_reasons),
                 )
-                issue_state.run_failed = False
-                issue_state.last_notice = None
+                if not issue_state.run_failed:
+                    issue_state.last_notice = None
             except Exception as exc:
                 issue_state.run_failed = True
                 _log_exception("post-Codex action failed", exc, issue=issue_full.number)
                 try:
                     _notice_once(rt=rt, issue_state=issue_state, issue_number=issue_full.number,
-                                 key="run-failed", body="run failed after processing input; reply `retrigger` to retry.")
+                                 key="run-failed", body=f"run failed: {type(exc).__name__}: {str(exc).splitlines()[0][:300]}. Reply `retrigger` to retry.")
                 except Exception:
                     pass
                 try:

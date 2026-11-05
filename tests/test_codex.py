@@ -24,6 +24,7 @@ class _RecordingRunner(Runner):
         input_text: str | None = None,
         timeout_s: float | None = None,
         check: bool = True,
+        log_path: Path | None = None,
     ) -> CmdResult:
         argv = list(args)
         self.calls.append((argv, str(cwd) if cwd else None, input_text, timeout_s, check))
@@ -90,3 +91,27 @@ def test_read_timeout_s_rejects_invalid_values(monkeypatch) -> None:
     monkeypatch.setenv("AUTOCODER_CODEX_TIMEOUT_S", "0")
     with pytest.raises(ValueError, match="greater than zero"):
         codex_mod._read_timeout_s()
+
+
+def test_logged_runner_streams_and_times_out_process_group(tmp_path):
+    import os
+    import sys
+    from autocoder._runner import CommandTimeout, SubprocessRunner
+    path = tmp_path / 'run.log'
+    runner = SubprocessRunner()
+    runner.run([sys.executable, '-c', 'print("output")'], log_path=path)
+    assert path.read_text().strip() == 'output'
+    assert path.stat().st_mode & 0o777 == 0o600
+    script = ('import subprocess,sys,time; '
+              'p=subprocess.Popen([sys.executable,"-c","import time; time.sleep(60)"]); '
+              'print(p.pid,flush=True); time.sleep(60)')
+    with pytest.raises(CommandTimeout):
+        runner.run([sys.executable, '-c', script], log_path=path, timeout_s=0.2)
+    child = int(path.read_text().strip())
+    stat = Path(f'/proc/{child}/stat')
+    # A killed orphan can remain a zombie until the host init process reaps it.
+    if stat.exists():
+        assert stat.read_text().split()[2] == 'Z'
+    else:
+        with pytest.raises(ProcessLookupError):
+            os.kill(child, 0)

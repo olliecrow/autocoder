@@ -109,6 +109,7 @@ autocoder does not run its own OAuth flow.
 
 ## Helpful tips
 
+- Inspect `.autocoder/plan/codex-run.log` in the issue worktree for worker output. The next run replaces it.
 - Set `AUTOCODER_CODEX_TIMEOUT_S` to a positive number of seconds (default: 36000).
 - Set `mentions = ["<login>"]` in config for needs-info notifications. Only allowlisted logins are mentioned.
 - Human comments must not start with `[autocoder]`; that prefix identifies bot output.

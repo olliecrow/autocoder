@@ -4,6 +4,8 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 import subprocess
+import signal
+import tempfile
 from typing import Mapping, Sequence
 
 
@@ -52,6 +54,7 @@ class Runner:
         input_text: str | None = None,
         timeout_s: float | None = None,
         check: bool = True,
+        log_path: Path | None = None,
     ) -> CmdResult:
         raise NotImplementedError
 
@@ -66,8 +69,12 @@ class SubprocessRunner(Runner):
         input_text: str | None = None,
         timeout_s: float | None = None,
         check: bool = True,
+        log_path: Path | None = None,
     ) -> CmdResult:
         argv = list(args)
+        if log_path is not None:
+            return self._run_logged(argv=argv, cwd=cwd, env=env, input_text=input_text,
+                                    timeout_s=timeout_s, check=check, log_path=log_path)
         try:
             completed = subprocess.run(
                 argv,
@@ -102,3 +109,39 @@ class SubprocessRunner(Runner):
         if check and res.returncode != 0:
             raise CommandError(result=res)
         return res
+
+
+    def _run_logged(self, *, argv, cwd, env, input_text, timeout_s, check, log_path):
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as log, tempfile.TemporaryFile(mode="w+") as prompt:
+            prompt.write(input_text or "")
+            prompt.seek(0)
+            proc = subprocess.Popen(argv, cwd=cwd, env={**os.environ, **env} if env else None,
+                                    stdin=prompt, stdout=log, stderr=subprocess.STDOUT,
+                                    start_new_session=True)
+            try:
+                returncode = proc.wait(timeout=timeout_s)
+            except BaseException as exc:
+                try:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
+                finally:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    proc.wait()
+                if isinstance(exc, subprocess.TimeoutExpired):
+                    raise CommandTimeout(argv=argv, timeout_s=float(timeout_s or 0)) from exc
+                raise
+        result = CmdResult(args=argv, returncode=returncode, stdout="", stderr="")
+        if check and returncode:
+            raise CommandError(result=result)
+        return result
