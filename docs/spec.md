@@ -422,3 +422,11 @@ Doctor fails on invalid or empty trust config, disabled issues, insufficient rep
 Only the multi-issue `issues` state schema is supported. Reject legacy single-issue files with a clear setup error; remove the old state file to start fresh. Validate retry and PR-search flags as booleans. Aggregate trusted PR author conflicts into one notice per candidate set.
 
 PR discovery skips head lookups when the remote branch does not exist. PR summaries include trust fields, so untrusted candidates need no detail request. The issue-reference search runs once per ownership state.
+
+
+Before a ready run stages or commits files, refuse unresolved index entries and
+conflict markers in staged or unstaged diffs. Leave the merge for an operator to
+resolve and stage, then wait for new author input. A clean merge followed by
+no_action or needs_info stays local. The default SHA cursor records an attempt,
+not publication: check the remote issue branch and post one sync notice per SHA
+when it is still behind. A later ready run verifies and pushes the local merge.

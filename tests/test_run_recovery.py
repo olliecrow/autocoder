@@ -721,3 +721,27 @@ def test_repeat_failure_after_retrigger_posts_a_new_notice(tmp_path, monkeypatch
     gh._issue = replace(issue, updated_at='later', comments=(comment,))
     runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
     assert sum('run failed' in body for _, body in gh.issue_comments) == 2
+
+
+def test_clean_unpublished_merge_gets_one_sync_notice(tmp_path, monkeypatch):
+    issue = IssueDetail(1, 't', '', 'OPEN', 'now', 'trusted-user', '', ('autocoder', 'autocoder:claimed'), ())
+    branch = 'autocoder/issue-1-test'
+    gh = _GhStub(issue=issue)
+    git = _GitStub(default_sha='new-base', branch=branch, dirty_status='')
+    # Local merge succeeds, but no_action/needs_info does not push it.
+    merged = []
+    git.is_ancestor = lambda **kw: bool(merged) and not kw['descendant'].startswith('origin/autocoder/')
+    git.merge = lambda **kw: merged.append(True) or True
+    state = RepoState(issues={1: IssueState(branch=branch, last_seen_issue_updated_at='now',
+                                          last_seen_default_branch_sha='old-base',
+                                          last_seen_allowed_issue_digest='d')})
+    worktree = tmp_path / 'worktree'
+    worktree.mkdir()
+    monkeypatch.setattr(runmod, 'issue_worktree_dir', lambda *args: worktree)
+    monkeypatch.setattr(runmod, '_ensure_worktree', lambda **kw: worktree)
+    calls = []
+    monkeypatch.setattr(runmod, '_maybe_run_codex', lambda **kw: calls.append(kw))
+    for _ in range(3):
+        runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert len(calls) == 1
+    assert sum('The sync is not published' in body for _, body in gh.issue_comments) == 1

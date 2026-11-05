@@ -1476,6 +1476,13 @@ def _maybe_run_codex(
 
     expected_branch = _expected_push_branch(rt=rt, issue_state=issue_state, issue=issue,
                                             pr=pr, worktree_dir=worktree_dir)
+    if rt.git.has_unresolved_conflicts(cwd=worktree_dir):
+        default_sha = rt.git.rev_parse(cwd=worktree_dir, rev=f"origin/{rt.default_branch}")
+        _notice_once(rt=rt, issue_state=issue_state, issue_number=issue.number,
+                     key=f"default-sync:{default_sha}",
+                     body="Push blocked: unresolved index entries or conflict markers remain. "
+                          "Resolve and stage the conflicts, then reply `retrigger` to verify and push.")
+        return
     # Commit/push if there are remaining local changes after codex execution.
     if rt.git.status_porcelain(cwd=worktree_dir).strip():
         _log("git status dirty after codex; committing", issue=issue.number, pr=pr_number)
@@ -2062,14 +2069,15 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
             if (
                 issue_state.branch
                 and not issue_state.run_failed
-                and not rt.git.is_ancestor(cwd=rt.managed_dir, ancestor=default_ref, descendant=issue_state.branch)
+                and not rt.git.is_ancestor(cwd=rt.managed_dir, ancestor=default_ref, descendant=f"origin/{issue_state.branch}")
             ):
                 _log("default branch sync still needed after codex", level="warn", issue=issue_full.number,
                      branch=issue_state.branch, default_sha=_short_sha(default_branch_sha))
                 _notice_once(rt=rt, issue_state=issue_state, issue_number=issue_full.number,
                              key=f"default-sync:{default_branch_sha}",
-                             body=f"could not merge `{default_ref}` into `{issue_state.branch}`. "
-                                  "Resolve the conflict on the branch, or reply `retrigger` to try again.")
+                             body=f"could not merge `{default_ref}` into the remote `{issue_state.branch}`. "
+                                  "The sync is not published. Resolve and stage any conflicts, "
+                                  "then reply `retrigger` to verify and push.")
 
             if issue_state.pr is not None:
                 pr_full_after = rt.gh.view_pr(number=issue_state.pr, include_comments=True)

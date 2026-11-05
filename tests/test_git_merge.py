@@ -82,3 +82,17 @@ def test_added_lines_skip_merged_in_history_but_keep_conflict_resolutions(repo: 
     assert "resolved line" in added
     assert "already on the default branch" not in added
     assert "from issue" not in added
+
+
+def test_conflict_guard_checks_index_and_staged_markers(repo):
+    _commit_file(repo, "main", "f.txt", "main\n")
+    _commit_file(repo, "issue", "f.txt", "issue\n")
+    git = GitClient(runner=SubprocessRunner())
+    assert not git.merge(cwd=repo, ref="main")
+    assert git.has_unresolved_conflicts(cwd=repo)
+    git.add_all(cwd=repo)
+    assert git.has_unresolved_conflicts(cwd=repo)
+    (repo / "f.txt").write_text("resolved\n")
+    assert git.has_unresolved_conflicts(cwd=repo)  # markers remain in the index
+    git.add_all(cwd=repo)
+    assert not git.has_unresolved_conflicts(cwd=repo)

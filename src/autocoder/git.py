@@ -127,6 +127,17 @@ class GitClient:
             return False
         raise CommandError(result=res)
 
+    def has_unresolved_conflicts(self, *, cwd: Path) -> bool:
+        if self._git(["ls-files", "--unmerged"], cwd=cwd).strip():
+            return True
+        for args in (["diff", "--check"], ["diff", "--cached", "--check"]):
+            result = self._runner.run(["git", *args], cwd=cwd, check=False)
+            if result.returncode not in (0, 2):
+                raise CommandError(result=result)
+            if "leftover conflict marker" in result.stdout:
+                return True
+        return False
+
     def add_all(self, *, cwd: Path) -> None:
         self._git(["add", "-A"], cwd=cwd)
 

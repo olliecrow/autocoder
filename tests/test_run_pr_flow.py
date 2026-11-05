@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from autocoder._runner import CmdResult, CommandError
 from autocoder.codex import CodexOutput
 from autocoder.gh import (
@@ -39,6 +41,9 @@ class _GitStub:
 
     def current_branch(self, *, cwd: Path):
         return "autocoder/issue-1-test"
+
+    def has_unresolved_conflicts(self, *, cwd: Path) -> bool:
+        return False
 
     def status_porcelain(self, *, cwd: Path) -> str:
         return ""
@@ -93,7 +98,8 @@ class _CodexStub:
         return self._output
 
 
-def test_maybe_run_codex_skips_pr_create_when_branch_matches_default(tmp_path: Path) -> None:
+@pytest.mark.parametrize("conflicted", [False, True])
+def test_maybe_run_codex_skips_pr_create_when_branch_matches_default(tmp_path: Path, conflicted) -> None:
     worktree = tmp_path / "worktree"
     plan_dir = worktree / ".autocoder" / "plan"
     plan_dir.mkdir(parents=True, exist_ok=True)
@@ -102,6 +108,7 @@ def test_maybe_run_codex_skips_pr_create_when_branch_matches_default(tmp_path: P
     head_sha = "abc123"
 
     git = _GitStub(base_sha=base_sha, head_sha=head_sha)
+    git.has_unresolved_conflicts = lambda **kwargs: conflicted
     gh = _GhStub()
     codex = _CodexStub(
         output=CodexOutput(
@@ -158,6 +165,11 @@ def test_maybe_run_codex_skips_pr_create_when_branch_matches_default(tmp_path: P
     )
 
     assert gh.created_pr_calls == 0
+    if conflicted:
+        assert not git.pushed
+        assert len(gh.issue_comments) == 1
+        assert "Push blocked" in gh.issue_comments[0][1]
+        return
     assert len(gh.issue_comments) == 1
     assert "merge sync complete" in gh.issue_comments[0][1]
 
