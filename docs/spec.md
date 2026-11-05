@@ -174,7 +174,7 @@ Branch ownership and safety:
 - prefer branches matching `autocoder/issue-<n>-*`.
 - autocoder must not push to branches that it cannot verify are safe to mutate (for example, a PR from a fork).
 - autocoder only pushes to PR branches when the PR is not cross-repository, the PR author is allowlisted, and `pr.author == issue.author`; otherwise it should skip pushing and ask for clarification.
-- autocoder must not adopt or mutate PRs authored by non-allowlisted logins or by an author different from the issue author; it should leave a note on the issue and proceed with an autocoder-owned branch/PR.
+- autocoder must not adopt or mutate PRs authored by non-allowlisted logins or by an author different from the issue author; ignore untrusted PRs silently; report allowlisted author conflicts once.
 - if autocoder cannot safely determine a single PR/branch to use (for example, multiple open PRs), it should ask a single clear question in the issue and stop until answered.
 
 Resuming after stop:
@@ -198,7 +198,7 @@ Invocation principles:
 - avoid invoking codex during idle polling; only invoke it when there is new actionable input.
 - run codex with the explicit execution posture defined by autocoder.
 - pin codex to `gpt-5.6-sol` with reasoning effort `high` for every invocation.
-- run codex without interactive approvals and with unrestricted local execution (`--ask-for-approval never` and `--sandbox danger-full-access`).
+- run codex without interactive approvals in `workspace-write`; unrestricted execution requires explicit config opt-in.
 - bound each invocation with a wall-clock timeout (default 36000s / 10h). `AUTOCODER_CODEX_TIMEOUT_S` may set a positive integer override; invalid or non-positive values fail startup.
 - treat each codex invocation as fresh/stateless; codex must re-acquire context each run via the prompt's memory/context map (docs, local state/artifacts, and GitHub issue/PR threads).
 - discover repository skills under `.agents/skills/` and installed local Codex skills, then include the catalog in each prompt.
@@ -218,7 +218,7 @@ Invocation principles:
 - codex should assume each run may be the last before interruption; preserve durable context in repo docs and preserve code state via commits/pushes before finishing.
 
 Default sandbox posture:
-- `codex exec --sandbox danger-full-access --ask-for-approval never`
+- `codex exec --sandbox workspace-write --ask-for-approval never`
 
 Notes:
 - autocoder itself still uses `gh` and `git` outside the codex sandbox; keep those operations repo-scoped.
@@ -367,7 +367,7 @@ Minimum communication behaviors:
 - allowed destructive operations are limited to owned worktree/branch cleanup paths documented in this spec (for example local issue worktree removal and autocoder-managed issue branch deletion on stop/close/merge).
 - keep credentials local; do not print secrets into issue/PR comments.
 - do not commit secrets, tokens, private keys, or confidential internal information into repo files, docs, or notes.
-- codex has unrestricted local command execution and no approval prompts. A worktree is an isolation mechanism for Git changes, not an operating-system security boundary.
+- codex has no approval prompts; unrestricted local execution requires explicit opt-in. A worktree is an isolation mechanism for Git changes, not an operating-system security boundary.
 - only allow identities trusted at the level of local code execution, use least-privilege credentials, and run against trusted repositories.
 
 ## Out of scope
@@ -394,3 +394,7 @@ Fetch only GitHub attachment paths and image hosts. Raw content must belong to t
 ## Redact outgoing text
 
 Redact known token and private-key formats in every GitHub title, body, and comment. Also redact exact values of at least eight characters from secret-named environment variables and all assignments in the managed clone `.env`. Apply the same filter to generated commit messages. Redaction is defense in depth; never give the worker unrelated credentials.
+
+## Execution isolation default
+
+Default to `codex_sandbox = "workspace-write"`. Keep unrestricted execution as an explicit `danger-full-access` opt-in for isolated workers. This changes earlier behavior: sandboxed tasks can fail when they need network or external filesystem access. autocoder performs its own commit and push outside the sandbox. Use a single-repo fine-grained GitHub token, a repo deploy key, and default-branch protection. Trust repo writers and allowlisted issue authors at code-execution level. No live Codex run was used to validate sandbox-dependent task capabilities.

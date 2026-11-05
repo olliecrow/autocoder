@@ -2057,7 +2057,7 @@ def run_session(*, repo_ssh_url: str) -> int:
         cfg = load_config(global_path=global_config_path(), repo_path=repo_config_path(repo))
         if not cfg.allowed_github_logins:
             raise ValueError('no allowed_github_logins configured; add allowed_github_logins = ["<login>"] to ~/autocoder/config.toml')
-        codex = CodexClient(runner=runner)
+        codex = CodexClient(runner=runner, sandbox=cfg.codex_sandbox)
         managed_dir = managed_clone_dir(repo)
         state_path = repo_state_dir(repo) / "state.json"
         state = load_repo_state(state_path)

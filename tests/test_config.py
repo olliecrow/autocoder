@@ -61,3 +61,13 @@ def test_load_config_rejects_invalid_login_lists(tmp_path: Path, line: str) -> N
 
     with pytest.raises(ValueError, match="invalid config key"):
         load_config(global_path=global_path, repo_path=tmp_path / "repo.toml")
+
+
+def test_sandbox_defaults_safe_and_requires_valid_opt_in(tmp_path):
+    path = tmp_path / 'config.toml'
+    assert load_config(global_path=path, repo_path=path).codex_sandbox == 'workspace-write'
+    path.write_text('codex_sandbox = "danger-full-access"\n')
+    assert load_config(global_path=path, repo_path=path).codex_sandbox == 'danger-full-access'
+    path.write_text('codex_sandbox = "invalid"\n')
+    with pytest.raises(ValueError, match='codex_sandbox'):
+        load_config(global_path=path, repo_path=path)

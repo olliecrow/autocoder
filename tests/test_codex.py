@@ -36,7 +36,7 @@ class _RecordingRunner(Runner):
         return CmdResult(args=argv, returncode=0, stdout="", stderr="")
 
 
-def test_run_exec_pins_model_reasoning_and_unrestricted_execution(tmp_path: Path) -> None:
+def test_run_exec_pins_model_reasoning_and_safe_sandbox(tmp_path: Path) -> None:
     runner = _RecordingRunner(
         payload={
             "decision": "ready",
@@ -71,7 +71,7 @@ def test_run_exec_pins_model_reasoning_and_unrestricted_execution(tmp_path: Path
     assert 'model_reasoning_effort="high"' in argv
     assert "exec" in argv
     assert "-s" in argv
-    assert "danger-full-access" in argv
+    assert "workspace-write" in argv
     assert cwd is None
     assert input_text == "do work"
     assert timeout_s is not None and timeout_s > 0

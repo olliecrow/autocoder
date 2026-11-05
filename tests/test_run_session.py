@@ -27,7 +27,7 @@ def test_run_session_releases_lock_when_initialization_fails(
     monkeypatch.setattr(
         run,
         "load_config",
-        lambda **kwargs: SimpleNamespace(allowed_github_logins=("trusted-user",), mentions=()),
+        lambda **kwargs: SimpleNamespace(allowed_github_logins=("trusted-user",), mentions=(), codex_sandbox="workspace-write"),
     )
     monkeypatch.setattr(run, "managed_clone_dir", lambda repo: tmp_path / "repo")
     monkeypatch.setattr(run, "repo_state_dir", lambda repo: tmp_path / "state")

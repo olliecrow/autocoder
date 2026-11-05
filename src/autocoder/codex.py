@@ -11,7 +11,7 @@ from ._runner import Runner
 
 _CODEX_MODEL = "gpt-5.6-sol"
 _CODEX_REASONING_EFFORT = "high"
-_CODEX_SANDBOX = "danger-full-access"
+_CODEX_SANDBOX = "workspace-write"
 _CODEX_APPROVAL_POLICY = "never"
 
 
@@ -69,7 +69,8 @@ _OUTPUT_SCHEMA: dict[str, Any] = {
 
 
 class CodexClient:
-    def __init__(self, *, runner: Runner):
+    def __init__(self, *, runner: Runner, sandbox: str = _CODEX_SANDBOX):
+        self._sandbox = sandbox
         self._runner = runner
         self._timeout_s = _read_timeout_s()
 
@@ -99,7 +100,7 @@ class CodexClient:
                 f'model_reasoning_effort="{_CODEX_REASONING_EFFORT}"',
                 "exec",
                 "-s",
-                _CODEX_SANDBOX,
+                self._sandbox,
                 "-C",
                 str(workdir),
                 "--output-schema",

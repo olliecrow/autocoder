@@ -23,9 +23,19 @@ Give teams a simple and reliable way to automate issue handling while keeping hu
 
 ## Security model
 
-autocoder runs Codex non-interactively with unrestricted filesystem and network access and with command approvals disabled. A Git worktree isolates branch state; it is not an operating-system sandbox.
+Codex uses `workspace-write` by default, with command approvals disabled. Network access and writes outside the worktree are restricted by Codex. autocoder commits and pushes after the run. A Git worktree alone is not a security boundary.
 
-Only allow GitHub identities you trust at the same level as local code execution. Use least-privilege GitHub and Codex credentials, run only against trusted repositories, and prefer a dedicated local account or machine. The issue-author allowlist and filtered thread context reduce prompt-injection risk, but they do not create a complete security boundary. See `docs/spec.md` for the full runtime contract and `SECURITY.md` for private vulnerability reporting.
+**Behavior change:** earlier releases used unrestricted execution. Tasks that need network access or writes outside the worktree can now fail. To restore that capability, set `codex_sandbox = "danger-full-access"` in your autocoder config. Use this only in a dedicated OS user, VM, or container with no unrelated credentials or private files.
+
+### Recommended isolation
+
+- Set `GH_TOKEN` to a fine-grained token limited to the single target repo. Grant Contents, Issues, and Pull requests read/write, plus Metadata read. Do not grant Workflows or Administration.
+- Use a write-enabled SSH deploy key for that repo only. Configure the managed clone to use that key with `IdentitiesOnly=yes`; do not expose an agent with unrelated keys.
+- Protect the default branch and require a pull request. The autocoder push guard does not constrain shell commands that Codex runs itself in unrestricted mode.
+- Trust allowlisted issue authors and everyone with repo write access at code-execution level. Writers control repo files and can edit comments. Triage users can label an allowlisted author's issue. The allowlist filters thread input; it does not make repo code or attachments safe.
+- Keep unrelated secrets out of the worker environment. Outgoing text redaction is a second line of defense, not a guarantee against disclosure.
+
+See `docs/spec.md` for runtime behavior and `SECURITY.md` for private reports.
 
 ## Quick start
 
@@ -52,23 +62,14 @@ allowed_github_logins = ["your-github-login"]
 4. Run autocoder for one repository.
 
 ```bash
-uv run python -m autocoder run git@github.com:OWNER/REPO.git
+uv run autocoder run git@github.com:OWNER/REPO.git
 ```
 
 5. Optional quick checks before running.
 
 ```bash
-uv run python -m autocoder doctor git@github.com:OWNER/REPO.git
-uv run python -m autocoder dry-run git@github.com:OWNER/REPO.git
-```
-
-Alternative entrypoints.
-
-```bash
-python -m autocoder run git@github.com:OWNER/REPO.git
-autocoder run git@github.com:OWNER/REPO.git
-autocoder doctor git@github.com:OWNER/REPO.git
-autocoder dry-run git@github.com:OWNER/REPO.git
+uv run autocoder doctor git@github.com:OWNER/REPO.git
+uv run autocoder dry-run git@github.com:OWNER/REPO.git
 ```
 
 Show command help.
@@ -108,6 +109,9 @@ autocoder does not run its own OAuth flow.
 
 ## Helpful tips
 
+- Set `AUTOCODER_CODEX_TIMEOUT_S` to a positive number of seconds (default: 36000).
+- Set `mentions = ["<login>"]` in config for needs-info notifications. Only allowlisted logins are mentioned.
+- Human comments must not start with `[autocoder]`; that prefix identifies bot output.
 - Set `AUTOCODER_LOG_LEVEL=debug` when you need verbose diagnostics.
 - autocoder keeps a per-repo lock, so you do not get two runs on the same repo at once.
 
@@ -117,38 +121,6 @@ autocoder does not run its own OAuth flow.
 - Within a repository session, opted-in issues are processed sequentially (not in parallel).
 - It depends on local `gh` and `codex` authentication sessions.
 - It requires SSH clone access to target repositories.
-
-## Short example output
-
-Doctor:
-
-```text
-autocoder doctor
-repo: owner/repo
-
-[ok] tool available: git
-[ok] tool available: gh
-[ok] tool available: codex
-[ok] gh auth status
-[ok] codex login status
-[ok] remote repository reachable
-
-doctor result: PASS
-```
-
-Dry run:
-
-```text
-autocoder dry-run
-repo: owner/repo
-
-planned order:
-1. parse repo and load config
-2. acquire lock
-3. sync managed clone
-4. discover defaults and labels
-5. start polling loop
-```
 
 ## Local state and directory layout
 

@@ -11,6 +11,7 @@ from .security import normalize_login
 class Config:
     # GitHub handles (without @) to mention when autocoder needs info.
     mentions: tuple[str, ...] = ()
+    codex_sandbox: str = "workspace-write"
     # GitHub handles allowed to author trusted issues/PRs for this autocoder instance.
     allowed_github_logins: tuple[str, ...] = ()
 
@@ -67,7 +68,10 @@ def load_config(*, global_path: Path, repo_path: Path) -> Config:
         source=allowed_source,
     )
 
+    sandbox = r.get("codex_sandbox", g.get("codex_sandbox", "workspace-write"))
+    if sandbox not in ("workspace-write", "danger-full-access"):
+        raise ValueError("codex_sandbox must be workspace-write or danger-full-access")
     return Config(
-        mentions=mentions,
+        codex_sandbox=sandbox,        mentions=mentions,
         allowed_github_logins=allowed_github_logins,
     )
