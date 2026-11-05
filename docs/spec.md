@@ -344,10 +344,13 @@ Required behavior:
 - when merge-syncing from base branch, treat it as high risk: inspect conflicts carefully, run relevant verification after merge, and return `ready` (which pushes the merge) only when confidence is high that neither the issue branch behavior nor merged base-branch behavior regressed.
 
 Codex cannot stage, so the index stays unmerged after it edits conflicted files.
-On `ready` during a merge, autocoder reads each unmerged file. A file with a line
-that starts with `<<<<<<<`, `|||||||`, or `>>>>>>>` (followed by a space or the
-line end) blocks the run: nothing is committed or pushed, and one notice per run
-lists the files and asks for `retrigger`. A lone `=======` line does not block.
+On `ready` during a merge, autocoder checks the paths that were conflicted when
+the run started, even if Codex staged them. A line that starts with `<`, `|`, or
+`>` repeated for the file's `conflict-marker-size` (default 7) blocks the run.
+A shorter configured size is honored, and any longer run still counts, so a wide
+marker cannot be committed. diff3 and zdiff3 base sections (`|||||||`) count.
+A line of only `=` characters does not. Nothing is committed or pushed, and one
+notice per run lists the files and asks for `retrigger`.
 Otherwise autocoder runs `git add -A`, requires no unmerged paths, commits the
 merge, and pushes. A conflict without marker text (binary or modify/delete) counts
 as resolved by the file state Codex leaves. Outside a merge, any unmerged path

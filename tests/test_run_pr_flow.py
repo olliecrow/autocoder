@@ -42,7 +42,7 @@ class _GitStub:
     def current_branch(self, *, cwd: Path):
         return "autocoder/issue-1-test"
 
-    def unresolved_conflict_paths(self, *, cwd: Path) -> list[str]:
+    def unresolved_conflict_paths(self, *, cwd: Path, also: tuple[str, ...] = ()) -> list[str]:
         return []
 
     def merge_in_progress(self, *, cwd: Path) -> bool:

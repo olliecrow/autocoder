@@ -10,14 +10,24 @@ from pathlib import Path
 from ._runner import CommandError, Runner
 
 _MAX_BLOB_BYTES = 100 * 1024 * 1024  # GitHub rejects larger files.
-_CONFLICT_MARKER = re.compile(rb"^(?:<{7}|\|{7}|>{7})(?: |$)", re.MULTILINE)
+_DEFAULT_MARKER_WIDTH = 7
 
 
-def _has_conflict_markers(path: Path) -> bool:
+def _marker_pattern(minimum: int) -> re.Pattern[bytes]:
+    # Git writes exactly conflict-marker-size characters (default 7). Honor a
+    # shorter configured size. Any longer run still matches, so a wide marker
+    # cannot hide. diff3 and zdiff3 add a ||||||| base section of the same width.
+    # A line of only "=" is a heading underline, not a marker.
+    least = minimum if minimum > 0 else _DEFAULT_MARKER_WIDTH
+    text = rf"^(?:<{{{least},}}|>{{{least},}}|\|{{{least},}})(?: |$)"
+    return re.compile(text.encode("ascii"), re.MULTILINE)
+
+
+def _has_conflict_markers(path: Path, *, minimum: int = _DEFAULT_MARKER_WIDTH) -> bool:
     # A deleted file or a symlink has no marker text to check.
     if path.is_symlink() or not path.is_file():
         return False
-    return _CONFLICT_MARKER.search(path.read_bytes().replace(b"\r\n", b"\n")) is not None
+    return _marker_pattern(minimum).search(path.read_bytes().replace(b"\r\n", b"\n")) is not None
 
 
 @dataclass(frozen=True)
@@ -141,19 +151,34 @@ class GitClient:
         res = self._runner.run(["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"], cwd=cwd, check=False)
         return res.returncode == 0
 
-    def unresolved_conflict_paths(self, *, cwd: Path) -> list[str]:
+    def unmerged_paths(self, *, cwd: Path) -> list[str]:
+        out = self._git(["diff", "--name-only", "-z", "--diff-filter=U"], cwd=cwd)
+        return sorted({p for p in out.split("\0") if p})
+
+    def _marker_minimum(self, *, cwd: Path, rel: str) -> int:
+        out = self._git(["check-attr", "-z", "conflict-marker-size", "--", rel], cwd=cwd)
+        parts = out.split("\0")
+        raw = parts[2] if len(parts) >= 3 else ""
+        width = int(raw) if raw.isdigit() else _DEFAULT_MARKER_WIDTH
+        if width < 1:
+            width = _DEFAULT_MARKER_WIDTH
+        # A configured width of 10 still matches; a width below 7 must match too.
+        return min(width, _DEFAULT_MARKER_WIDTH)
+
+    def unresolved_conflict_paths(self, *, cwd: Path, also: Sequence[str] = ()) -> list[str]:
         """
-        Return unmerged paths that are not safe to stage.
+        Return conflict paths that are not safe to commit.
 
         During a merge, a conflicted file counts as resolved once it has no conflict marker lines.
-        A lone `=======` line (for example a heading underline) is not a marker. Outside a merge,
-        every unmerged path is unsafe.
+        `also` keeps the paths that were conflicted at the start of the run, so staging them does
+        not hide markers. A lone `=======` line (for example a heading underline) is not a marker.
+        Outside a merge, every unmerged path is unsafe.
         """
-        out = self._git(["diff", "--name-only", "-z", "--diff-filter=U"], cwd=cwd)
-        paths = sorted({p for p in out.split("\0") if p})
-        if not paths or not self.merge_in_progress(cwd=cwd):
+        paths = self.unmerged_paths(cwd=cwd)
+        if not self.merge_in_progress(cwd=cwd):
             return paths
-        return [p for p in paths if _has_conflict_markers(cwd / p)]
+        inspect = sorted(set(paths) | {p for p in also if p})
+        return [p for p in inspect if _has_conflict_markers(cwd / p, minimum=self._marker_minimum(cwd=cwd, rel=p))]
 
     def add_all(self, *, cwd: Path) -> None:
         self._git(["add", "-A"], cwd=cwd)

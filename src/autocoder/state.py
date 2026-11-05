@@ -23,6 +23,8 @@ class IssueState:
     # Digests of allowlisted human activity (used to ignore noise from other users).
     last_seen_allowed_issue_digest: str | None = None
     last_seen_allowed_pr_digest: str | None = None
+    # Conflict paths captured before the worker runs, so a later retry still checks them.
+    merge_conflict_paths: tuple[str, ...] = ()
 
 
 @dataclass
@@ -48,6 +50,19 @@ def _optional_integer(value: object, *, field_name: str) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"invalid state field {field_name}: expected an integer or null")
     return value
+
+
+def _path_tuple(value: object, *, field_name: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise ValueError(f"invalid state field {field_name}: expected a list")
+    paths: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item or "\n" in item or "\0" in item:
+            raise ValueError(f"invalid state field {field_name}: expected paths")
+        paths.append(item)
+    return tuple(paths)
 
 
 def _boolean(value: object, *, field_name: str) -> bool:
@@ -88,6 +103,10 @@ def _issue_state_from_mapping(data: dict[str, object], *, field_prefix: str) -> 
         last_seen_allowed_pr_digest=_optional_string(
             data.get("last_seen_allowed_pr_digest"),
             field_name=f"{field_prefix}.last_seen_allowed_pr_digest",
+        ),
+        merge_conflict_paths=_path_tuple(
+            data.get("merge_conflict_paths"),
+            field_name=f"{field_prefix}.merge_conflict_paths",
         ),
     )
 

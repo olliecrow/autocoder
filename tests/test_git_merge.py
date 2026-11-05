@@ -103,6 +103,33 @@ def test_conflict_guard_accepts_codex_edits_without_staging(repo):
     assert len(_git(repo, "rev-list", "--parents", "-n1", "HEAD").split()) == 3
 
 
+def test_conflict_guard_blocks_wide_diff3_markers(repo):
+    # The marker size has to be on the branch that is merged into. Git reads it
+    # from that worktree while it writes the conflict.
+    (repo / ".gitattributes").write_text("f.txt conflict-marker-size=10\n", encoding="utf-8")
+    _git(repo, "add", ".gitattributes")
+    _git(repo, "commit", "-qm", "attrs")
+    _git(repo, "checkout", "-q", "issue")
+    _git(repo, "checkout", "main", "--", ".gitattributes")
+    _git(repo, "commit", "-qm", "attrs")
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "config", "merge.conflictStyle", "diff3")
+    _commit_file(repo, "main", "f.txt", "main\n")
+    _commit_file(repo, "issue", "f.txt", "issue\n")
+    git = GitClient(runner=SubprocessRunner())
+
+    assert not git.merge(cwd=repo, ref="main")
+    text = (repo / "f.txt").read_text(encoding="utf-8")
+    assert "||||||||||" in text  # diff3 base marker at the configured width
+    assert git.unresolved_conflict_paths(cwd=repo) == ["f.txt"]
+    # Six marker characters are below the default and this file's configured size.
+    (repo / "f.txt").write_text("issue\n<<<<<< note\n", encoding="utf-8")
+    assert git.unresolved_conflict_paths(cwd=repo) == []
+    (repo / "f.txt").write_text(text, encoding="utf-8")
+    _git(repo, "add", "f.txt")  # staging must not hide the original conflict path
+    assert git.unresolved_conflict_paths(cwd=repo, also=["f.txt"]) == ["f.txt"]
+
+
 def test_conflict_guard_ignores_heading_underlines_outside_a_merge(repo):
     (repo / "README.md").write_text("Install\n=======\n\nRun it.\n")
     _git(repo, "add", "README.md")
