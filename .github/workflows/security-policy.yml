@@ -1,6 +1,8 @@
 name: Security Policy Checks
 
 on:
+  schedule:
+    - cron: "23 6 * * 1"
   pull_request:
   push:
     branches:
@@ -41,16 +43,7 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            range="${PR_BASE_SHA}..${PR_HEAD_SHA}"
-          elif [[ "${PUSH_BEFORE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
-            range="${GITHUB_SHA}^!"
-          else
-            range="${PUSH_BEFORE_SHA}..${GITHUB_SHA}"
-          fi
-          gitleaks git --redact --verbose --config .gitleaks.toml --log-opts="${range}"
+        run: bash scripts/security/check-ci-range.sh
 
       - name: Self-test sensitive text policy patterns
         run: |
@@ -77,25 +70,6 @@ jobs:
             echo "expected fallback policy self-test failure did not occur" >&2
             exit 1
           fi
-
-      - name: Check commit messages for policy violations
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PUSH_BEFORE_SHA: ${{ github.event.before }}
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            range="${PR_BASE_SHA}..${PR_HEAD_SHA}"
-          elif [[ "${PUSH_BEFORE_SHA}" == "0000000000000000000000000000000000000000" ]]; then
-            range="${GITHUB_SHA}^!"
-          else
-            range="${PUSH_BEFORE_SHA}..${GITHUB_SHA}"
-          fi
-
-          temp_file="$(mktemp)"
-          git log --format='%H%n%s%n%b%n' "${range}" > "${temp_file}"
-          bash scripts/security/check-sensitive-text.sh --context=commit-message "${temp_file}"
 
       - name: Check pull request title/body for policy violations
         if: github.event_name == 'pull_request'

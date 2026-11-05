@@ -430,3 +430,10 @@ resolve and stage, then wait for new author input. A clean merge followed by
 no_action or needs_info stays local. The default SHA cursor records an attempt,
 not publication: check the remote issue branch and post one sync notice per SHA
 when it is still behind. A later ready run verifies and pushes the local merge.
+
+
+Security CI runs weekly and on pushes/PRs. It checks commit messages and added
+file lines, including merge changes against the first parent. Invalid ranges
+and scan errors fail the check. Missing or zero push bases scan the tip commit.
+The path checker checks each match independently; gitleaks defaults alone do
+not cover all home paths.
