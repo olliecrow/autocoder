@@ -706,13 +706,14 @@ def _pr_adoption_problem(pr, *, issue_author: str, allowed_logins) -> str | None
 
 def _find_or_adopt_pr(*, rt: _Runtime, issue_state: IssueState, issue_number: int,
                       issue_author: str) -> PullRequestDetail | None:
+    conflicts: set[int] = set()
+
     def eligible(pr):
         problem = _pr_adoption_problem(pr, issue_author=issue_author, allowed_logins=_cfg_allowed_logins(rt.cfg))
         if problem == "untrusted":
             _log("ignoring untrusted PR", level="warn", pr=pr.number)
         elif problem:
-            _notice_once(rt=rt, issue_state=issue_state, issue_number=issue_number,
-                         key=f"author:{pr.number}", body=f"PR #{pr.number} {problem}.")
+            conflicts.add(pr.number)
         return problem is None
 
     def adopt(pr):
@@ -729,11 +730,18 @@ def _find_or_adopt_pr(*, rt: _Runtime, issue_state: IssueState, issue_number: in
             if eligible(pr):
                 return adopt(pr)
             issue_state.pr = None
+            if conflicts:
+                _notice_once(rt=rt, issue_state=issue_state, issue_number=issue_number,
+                             key=f"author:{pr.number}", body=f"PR #{pr.number} author does not match issue author.")
             return None
     if not issue_state.branch:
         return None
     candidates = []
-    for summary in rt.gh.list_prs(state="all", head=issue_state.branch, limit=100):
+    summaries = (rt.gh.list_prs(state="all", head=issue_state.branch, limit=100)
+                 if rt.git.remote_branch_exists(cwd=rt.managed_dir, remote="origin", branch=issue_state.branch) else [])
+    for summary in summaries:
+        if not eligible(summary):
+            continue
         pr = rt.gh.view_pr(number=summary.number, include_comments=False)
         if eligible(pr):
             candidates.append(pr)
@@ -742,11 +750,17 @@ def _find_or_adopt_pr(*, rt: _Runtime, issue_state: IssueState, issue_number: in
         found = rt.gh.search_open_prs_by_body_snippet(
             query=f'"Fixes #{issue_number}" author:{issue_author}', limit=100)
         for summary in found:
+            if not eligible(summary):
+                continue
             pr = rt.gh.view_pr(number=summary.number, include_comments=False)
             if eligible(pr) and re.search(rf"(?im)\b(?:fix(?:es|ed)?|close[sd]?|resolve[sd]?)\s+#{issue_number}\b", pr.body):
                 candidates.append(pr)
     if len(candidates) == 1:
         return adopt(candidates[0])
+    if not candidates and conflicts:
+        key = "authors:" + ",".join(str(number) for number in sorted(conflicts))
+        _notice_once(rt=rt, issue_state=issue_state, issue_number=issue_number, key=key,
+                     body="PR authors do not match issue author; use a PR opened by the issue author.")
     if len(candidates) > 1:
         key = "multiple:" + ",".join(str(pr.number) for pr in sorted(candidates, key=lambda pr: pr.number))
         _notice_once(rt=rt, issue_state=issue_state, issue_number=issue_number, key=key,
@@ -1951,7 +1965,7 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
                 _log_exception("post-Codex action failed", exc, issue=issue_full.number)
                 try:
                     _notice_once(rt=rt, issue_state=issue_state, issue_number=issue_full.number,
-                                 key="run-failed", body=f"run failed: {type(exc).__name__}: {str(exc).splitlines()[0][:300]}. Reply `retrigger` to retry.")
+                                 key="run-failed", body=f"run failed: {type(exc).__name__}: {(str(exc).splitlines() or ['unknown error'])[0][:300]}. Reply `retrigger` to retry.")
                 except Exception:
                     pass
                 try:
@@ -2125,6 +2139,7 @@ def run_session(*, repo_ssh_url: str) -> int:
     )
 
     try:
+        state = load_repo_state(rt.state_path)
         _ensure_managed_clone(rt=rt)
         rt = replace(rt, default_branch=_discover_default_branch(rt=rt))
         _ensure_labels(rt=rt)

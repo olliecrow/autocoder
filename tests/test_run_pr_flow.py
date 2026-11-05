@@ -29,6 +29,9 @@ class _GitStub:
         self._head_sha = head_sha
         self.pushed: list[tuple[str, str]] = []
 
+    def remote_branch_exists(self, **kwargs):
+        return True
+
     def current_branch(self, *, cwd: Path):
         return "autocoder/issue-1-test"
 
@@ -760,6 +763,8 @@ def test_fork_candidates_are_silent_across_polls():
     searches = []
     gh.search_open_prs_by_body_snippet = lambda **kwargs: searches.append(kwargs) or [replace(pr, author='outsider')]
     rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(allowed_github_logins=('trusted-user',)))
+    rt.git = SimpleNamespace(remote_branch_exists=lambda **kwargs: True)
+    rt.managed_dir = Path('.')
     state = IssueState(branch=pr.head_ref_name)
     for _ in range(3):
         assert _find_or_adopt_pr(rt=rt, issue_state=state, issue_number=1, issue_author='trusted-user') is None
@@ -827,3 +832,33 @@ def test_ready_run_ignores_fork_and_creates_own_pr(tmp_path):
     assert len(created) == 1
     assert state.pr == 8
     assert not any('fork' in body for _number, body in gh.issue_comments)
+
+
+def test_multiple_trusted_author_conflicts_do_not_repeat_notices():
+    from dataclasses import replace
+    pr = PullRequestDetail(7, 't', '', 'OPEN', 'now', 'another-user',
+                           'autocoder/issue-1-test', 'main', False, None, '', (), ())
+    other = replace(pr, number=8)
+    gh = _GhAdoptStub(pr=pr)
+    gh.list_prs = lambda **kwargs: [pr, other]
+    gh.view_pr = lambda **kwargs: pr if kwargs['number'] == 7 else other
+    gh.search_open_prs_by_body_snippet = lambda **kwargs: []
+    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(allowed_github_logins=('trusted-user', 'another-user')))
+    rt.git = SimpleNamespace(remote_branch_exists=lambda **kwargs: True)
+    rt.managed_dir = Path('.')
+    state = IssueState(branch=pr.head_ref_name)
+    for _ in range(3):
+        assert _find_or_adopt_pr(rt=rt, issue_state=state, issue_number=1, issue_author='trusted-user') is None
+    assert len(gh.issue_comments) == 1
+
+
+def test_missing_remote_branch_skips_pr_list_and_searches_once():
+    gh = _GhStub()
+    searches = []
+    gh.search_open_prs_by_body_snippet = lambda **kwargs: searches.append(kwargs) or []
+    rt = SimpleNamespace(gh=gh, cfg=SimpleNamespace(allowed_github_logins=('trusted-user',)),
+                         git=SimpleNamespace(remote_branch_exists=lambda **kwargs: False), managed_dir=Path('.'))
+    state = IssueState(branch='autocoder/issue-1-test')
+    for _ in range(3):
+        assert _find_or_adopt_pr(rt=rt, issue_state=state, issue_number=1, issue_author='trusted-user') is None
+    assert len(searches) == 1

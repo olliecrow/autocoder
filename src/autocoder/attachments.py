@@ -43,7 +43,15 @@ def is_allowed_attachment_url(url: str, *, allowed_hosts: set[str], repo_full_na
     if parsed.scheme.lower() != "https":
         return False
     host = (parsed.hostname or "").lower()
-    if not host or host not in {h.lower() for h in allowed_hosts} or parsed.username or parsed.password or parsed.port not in (None, 443):
+    try:
+        port = parsed.port
+    except ValueError:
+        return False
+    if not host or host not in {h.lower() for h in allowed_hosts} or parsed.username or parsed.password or port not in (None, 443):
+        return False
+    if host in {"objects.githubusercontent.com", "github-production-user-asset-6210df.s3.amazonaws.com", "media.githubusercontent.com"}:
+        return False
+    if any(part in {".", ".."} for part in urllib.parse.unquote(parsed.path).split("/")):
         return False
     if host in {"user-images.githubusercontent.com", "private-user-images.githubusercontent.com"}:
         return bool(parsed.path.strip("/"))

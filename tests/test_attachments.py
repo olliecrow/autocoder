@@ -260,3 +260,15 @@ def test_modern_attachment_redirect_allowed_without_token():
         'https://github-production-user-asset-6210df.s3.amazonaws.com/example')
     assert redirected is not None
     assert redirected.get_header('Authorization') is None
+
+
+def test_redirect_only_hosts_and_cross_repo_raw_are_not_initial_urls():
+    allowed = allowed_attachment_hosts_for_repo_host('github.com')
+    for url in ('https://objects.githubusercontent.com/user-attachments/assets/example',
+                'https://github-production-user-asset-6210df.s3.amazonaws.com/user-attachments/assets/example',
+                'https://raw.githubusercontent.com/other/repo/main/file',
+                'https://raw.githubusercontent.com/owner/repo/../../other/file',
+                'https://github.com:bad/user-attachments/assets/example'):
+        assert not is_allowed_attachment_url(url, allowed_hosts=allowed, repo_full_name='owner/repo')
+    assert is_allowed_attachment_url('https://raw.githubusercontent.com/owner/repo/main/file',
+                                     allowed_hosts=allowed, repo_full_name='owner/repo')

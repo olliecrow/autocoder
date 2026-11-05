@@ -59,6 +59,9 @@ class PullRequestSummary:
     updated_at: str
     head_ref_name: str
     base_ref_name: str
+    is_cross_repository: bool
+    author: str
+    body: str
 
 
 @dataclass(frozen=True)
@@ -95,6 +98,13 @@ class PullRequestDetail:
     body: str
     comments: tuple[PullRequestComment, ...]
     reviews: tuple[PullRequestReview, ...]
+
+
+def _pr_summary_from_json(it) -> PullRequestSummary:
+    return PullRequestSummary(number=it["number"], title=it["title"], url=it["url"], state=it["state"],
+                              updated_at=it["updatedAt"], head_ref_name=it["headRefName"],
+                              base_ref_name=it["baseRefName"], is_cross_repository=it.get("isCrossRepository", True),
+                              author=(it.get("author") or {}).get("login", ""), body=it.get("body") or "")
 
 
 class GhClient:
@@ -266,25 +276,12 @@ class GhClient:
             "--limit",
             str(limit),
             "--json",
-            "number,title,url,state,updatedAt,headRefName,baseRefName",
+            "number,title,url,state,updatedAt,headRefName,baseRefName,isCrossRepository,author,body",
         ]
         if head:
             args.extend(["--head", head])
         payload = self._gh_json(args)
-        prs: list[PullRequestSummary] = []
-        for it in payload:
-            prs.append(
-                PullRequestSummary(
-                    number=it["number"],
-                    title=it["title"],
-                    url=it["url"],
-                    state=it["state"],
-                    updated_at=it["updatedAt"],
-                    head_ref_name=it["headRefName"],
-                    base_ref_name=it["baseRefName"],
-                )
-            )
-        return prs
+        return [_pr_summary_from_json(it) for it in payload]
 
     def search_open_prs_by_body_snippet(self, *, query: str, limit: int = 10) -> list[PullRequestSummary]:
         payload = self._gh_json(
@@ -298,23 +295,10 @@ class GhClient:
                 "--search",
                 query,
                 "--json",
-                "number,title,url,state,updatedAt,headRefName,baseRefName",
+                "number,title,url,state,updatedAt,headRefName,baseRefName,isCrossRepository,author,body",
             ]
         )
-        prs: list[PullRequestSummary] = []
-        for it in payload:
-            prs.append(
-                PullRequestSummary(
-                    number=it["number"],
-                    title=it["title"],
-                    url=it["url"],
-                    state=it["state"],
-                    updated_at=it["updatedAt"],
-                    head_ref_name=it["headRefName"],
-                    base_ref_name=it["baseRefName"],
-                )
-            )
-        return prs
+        return [_pr_summary_from_json(it) for it in payload]
 
     def view_pr(self, *, number: int, include_comments: bool = True) -> PullRequestDetail:
         return self._view_pr(number=number, include_comments=include_comments)

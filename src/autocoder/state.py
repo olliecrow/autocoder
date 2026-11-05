@@ -48,11 +48,17 @@ def _optional_integer(value: object, *, field_name: str) -> int | None:
     return value
 
 
+def _boolean(value: object, *, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"invalid state field {field_name}: expected a boolean")
+    return value
+
+
 def _issue_state_from_mapping(data: dict[str, object], *, field_prefix: str) -> IssueState:
     return IssueState(
         last_notice=_optional_string(data.get("last_notice"), field_name="last_notice"),
-        pr_search_done=bool(data.get("pr_search_done", False)),
-        run_failed=bool(data.get("run_failed", False)),
+        pr_search_done=_boolean(data.get("pr_search_done", False), field_name="pr_search_done"),
+        run_failed=_boolean(data.get("run_failed", False), field_name="run_failed"),
         branch=_optional_string(data.get("branch"), field_name=f"{field_prefix}.branch"),
         pr=_optional_integer(data.get("pr"), field_name=f"{field_prefix}.pr"),
         trusted_issue_body=_optional_string(
@@ -89,35 +95,8 @@ def load_repo_state(path: Path) -> RepoState:
     if not isinstance(data, dict):
         raise ValueError("invalid state: expected a JSON object")
 
-    # Legacy schema: single active issue.
     if "issues" not in data:
-        issue_number = data.get("active_issue")
-        if issue_number is None:
-            return RepoState()
-        try:
-            issue_number_int = int(issue_number)
-        except (TypeError, ValueError):
-            raise ValueError("invalid legacy state field active_issue: expected an integer") from None
-        if issue_number_int <= 0:
-            raise ValueError("invalid legacy state field active_issue: expected a positive integer")
-
-        return RepoState(
-            issues={
-                issue_number_int: _issue_state_from_mapping(
-                    {
-                        "branch": data.get("active_branch"),
-                        "pr": data.get("active_pr"),
-                        "trusted_issue_body": data.get("trusted_issue_body"),
-                        "last_seen_issue_updated_at": data.get("last_seen_issue_updated_at"),
-                        "last_seen_pr_updated_at": data.get("last_seen_pr_updated_at"),
-                        "last_seen_default_branch_sha": data.get("last_seen_default_branch_sha"),
-                        "last_seen_allowed_issue_digest": data.get("last_seen_allowed_issue_digest"),
-                        "last_seen_allowed_pr_digest": data.get("last_seen_allowed_pr_digest"),
-                    },
-                    field_prefix="legacy",
-                )
-            }
-        )
+        raise ValueError("unsupported state schema; remove the state file to start fresh")
 
     raw_issues = data.get("issues")
     if not isinstance(raw_issues, dict):

@@ -414,3 +414,9 @@ Use a kernel file lock for the session lifetime. Keep the lock file after releas
 ## Doctor setup checks
 
 Doctor fails on invalid or empty trust config, disabled issues, insufficient repo permission, or missing Git identity. It warns on classic broad token scopes without printing tokens or identity values. Warnings do not change the exit status. All checks are read-only.
+
+## State schema
+
+Only the multi-issue `issues` state schema is supported. Reject legacy single-issue files with a clear setup error; remove the old state file to start fresh. Validate retry and PR-search flags as booleans. Aggregate trusted PR author conflicts into one notice per candidate set.
+
+PR discovery skips head lookups when the remote branch does not exist. PR summaries include trust fields, so untrusted candidates need no detail request. The issue-reference search runs once per ownership state.

@@ -570,3 +570,21 @@ def test_foreign_latest_claim_stops_before_codex(tmp_path, monkeypatch):
     runmod._run_one_iteration(rt=rt, state=state)
     assert state.issues == {}
     assert gh.issue_comments == []
+
+
+def test_closed_pr_posts_one_notice_over_three_polls(tmp_path):
+    from autocoder.gh import PullRequestDetail
+    issue = IssueDetail(1, 't', '', 'OPEN', 'now', 'trusted-user', '', ('autocoder', 'autocoder:claimed'), ())
+    branch = 'autocoder/issue-1-test'
+    pr = PullRequestDetail(7, 't', '', 'CLOSED', 'now', 'trusted-user', branch, 'main', False, None, '', (), ())
+    gh = _GhStub(issue=issue)
+    gh.view_pr = lambda **kwargs: pr
+    git = _GitStub(default_sha='base', branch=branch, dirty_status='')
+    rt = SimpleNamespace(repo=SimpleNamespace(owner='owner', name='repo', full_name='owner/repo'),
+                         cfg=SimpleNamespace(allowed_github_logins=ALLOWED, mentions=()),
+                         managed_dir=tmp_path, default_branch='main', gh=gh, git=git)
+    state = RepoState(issues={1: IssueState(branch=branch, pr=7)})
+    for _ in range(3):
+        runmod._run_one_iteration(rt=rt, state=state)
+    assert len(gh.issue_comments) == 1
+    assert 'not merged' in gh.issue_comments[0][1]

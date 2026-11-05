@@ -72,6 +72,7 @@ def load_config(*, global_path: Path, repo_path: Path) -> Config:
     if sandbox not in ("workspace-write", "danger-full-access"):
         raise ValueError("codex_sandbox must be workspace-write or danger-full-access")
     return Config(
-        codex_sandbox=sandbox,        mentions=mentions,
+        codex_sandbox=sandbox,
+        mentions=mentions,
         allowed_github_logins=allowed_github_logins,
     )

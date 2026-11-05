@@ -43,34 +43,11 @@ def test_state_missing_file_defaults(tmp_path: Path) -> None:
     assert loaded == RepoState()
 
 
-def test_state_migrates_legacy_v1_single_issue(tmp_path: Path) -> None:
-    p = tmp_path / "legacy.json"
-    legacy = {
-        "active_issue": 123,
-        "active_branch": "autocoder/issue-123-test",
-        "active_pr": 456,
-        "last_seen_issue_updated_at": "2020-01-01T00:00:00Z",
-        "last_seen_pr_updated_at": "2020-01-02T00:00:00Z",
-        "last_seen_default_branch_sha": "abc999",
-        "last_seen_allowed_issue_digest": "abc123",
-        "last_seen_allowed_pr_digest": "def456",
-    }
-    p.write_text(json.dumps(legacy) + "\n", encoding="utf-8")
-
-    loaded = load_repo_state(p)
-    assert loaded == RepoState(
-        issues={
-            123: IssueState(
-                branch="autocoder/issue-123-test",
-                pr=456,
-                last_seen_issue_updated_at="2020-01-01T00:00:00Z",
-                last_seen_pr_updated_at="2020-01-02T00:00:00Z",
-                last_seen_default_branch_sha="abc999",
-                last_seen_allowed_issue_digest="abc123",
-                last_seen_allowed_pr_digest="def456",
-            )
-        }
-    )
+def test_state_rejects_legacy_schema(tmp_path):
+    path = tmp_path / "state.json"
+    path.write_text('{"active_issue":123}')
+    with pytest.raises(ValueError, match="unsupported state schema"):
+        load_repo_state(path)
 
 
 @pytest.mark.parametrize(
