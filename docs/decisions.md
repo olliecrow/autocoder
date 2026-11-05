@@ -330,3 +330,7 @@ Stream worker output to `.autocoder/plan/codex-run.log` with mode `0600`, replac
 ## Claims converge before execution
 
 Post the claim comment before adding the claimed label, so a failed comment cannot leave a labelled orphan. Read claims back after claiming and before worker execution. If another instance owns the latest valid allowlisted claim, stop local work without changing shared labels or PRs. Accept only issue-specific autocoder branch names from claim comments.
+
+## Local lock and bootstrap
+
+Use a kernel file lock for the session lifetime. Keep the lock file after release; its content is diagnostic only. A stale PID never blocks startup. Discover the fallback default branch from the local `origin/HEAD` symbolic ref. Create missing labels only; preserve existing colors and descriptions.

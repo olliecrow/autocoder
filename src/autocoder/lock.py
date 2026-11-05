@@ -1,84 +1,38 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import fcntl
 import json
 import os
 from pathlib import Path
 import time
-from typing import Any, Callable
+from typing import Any
 
 
-def _default_is_pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
-
-
-@dataclass(frozen=True)
+@dataclass
 class SessionLock:
     path: Path
-    pid: int
+    fd: int | None
 
     def release(self) -> None:
-        if not self.path.exists():
-            return
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except Exception:
-            return
-        if data.get("pid") != self.pid:
-            return
-        self.path.unlink(missing_ok=True)
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
 
 
-def acquire_session_lock(
-    *,
-    path: Path,
-    metadata: dict[str, Any] | None = None,
-    pid: int | None = None,
-    is_pid_alive: Callable[[int], bool] = _default_is_pid_alive,
-) -> SessionLock:
-    """
-    Acquire an exclusive per-repo session lock.
-
-    This prevents accidentally running multiple autocoder processes against the same
-    repo concurrently (which can cause collisions and "rogue" background sessions).
-    """
+def acquire_session_lock(*, path: Path, metadata: dict[str, Any] | None = None) -> SessionLock:
     path.parent.mkdir(parents=True, exist_ok=True)
-    pid = int(os.getpid() if pid is None else pid)
-    data = {
-        "pid": pid,
-        "created_at_epoch": int(time.time()),
-        **(metadata or {}),
-    }
-
-    def _write_exclusive() -> None:
-        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(json.dumps(data, indent=2, sort_keys=True) + "\n")
-
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
-        _write_exclusive()
-    except FileExistsError:
-        try:
-            existing = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise RuntimeError(
-                f"autocoder session lock is unreadable or malformed: {path}"
-            ) from exc
-        if not isinstance(existing, dict):
-            raise RuntimeError(f"autocoder session lock is malformed: {path}")
-
-        ex_pid = existing.get("pid")
-        if isinstance(ex_pid, bool) or not isinstance(ex_pid, int) or ex_pid <= 0:
-            raise RuntimeError(f"autocoder session lock has no valid pid: {path}")
-        if is_pid_alive(ex_pid):
-            raise RuntimeError(f"autocoder session already running (pid {ex_pid})")
-
-        # A valid lock owned by a dead process is stale and safe to replace.
-        path.unlink(missing_ok=True)
-        _write_exclusive()
-
-    return SessionLock(path=path, pid=pid)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.fchmod(fd, 0o600)
+        data = {**(metadata or {}), 'pid': os.getpid(), 'created_at_epoch': int(time.time())}
+        os.ftruncate(fd, 0)
+        os.write(fd, (json.dumps(data, sort_keys=True) + '\n').encode())
+    except BlockingIOError as exc:
+        os.close(fd)
+        raise RuntimeError('autocoder session already running for this repo') from exc
+    except BaseException:
+        os.close(fd)
+        raise
+    return SessionLock(path=path, fd=fd)

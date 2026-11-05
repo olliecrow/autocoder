@@ -136,3 +136,14 @@ def test_all_github_text_is_redacted(monkeypatch):
     for args, text in runner.calls:
         assert value not in args
         assert text is None or value not in text
+
+
+def test_label_bootstrap_preserves_existing_labels():
+    from autocoder.gh import LabelDef
+    runner = _RecordingRunner()
+    gh = GhClient(runner=runner, repo='owner/repo')
+    gh._gh_json = lambda args: [{'name': 'existing'}]
+    gh.ensure_labels([LabelDef('existing', 'aaaaaa', 'keep'), LabelDef('missing', 'bbbbbb', 'new')])
+    assert len(runner.calls) == 1
+    assert runner.calls[0][0][3] == 'missing'
+    assert '--force' not in runner.calls[0][0]

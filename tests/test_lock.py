@@ -1,72 +1,31 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+import os
 
 import pytest
 
 from autocoder.lock import acquire_session_lock
 
 
-def test_lock_acquire_and_release(tmp_path: Path) -> None:
-    p = tmp_path / "session.lock"
-    lock = acquire_session_lock(
-        path=p,
-        pid=123,
-        metadata={"repo": "x/y"},
-        is_pid_alive=lambda _: False,
-    )
-    assert p.exists()
-    data = json.loads(p.read_text(encoding="utf-8"))
-    assert data["pid"] == 123
-    assert data["repo"] == "x/y"
-
+def test_lock_excludes_second_holder_and_releases(tmp_path):
+    path = tmp_path / 'session.lock'
+    lock = acquire_session_lock(path=path, metadata={'repo': 'owner/repo'})
+    try:
+        assert json.loads(path.read_text())['pid'] == os.getpid()
+        assert path.stat().st_mode & 0o777 == 0o600
+        with pytest.raises(RuntimeError, match='already running'):
+            acquire_session_lock(path=path)
+    finally:
+        lock.release()
     lock.release()
-    assert not p.exists()
+    second = acquire_session_lock(path=path)
+    second.release()
 
 
-def test_lock_rejects_live_pid(tmp_path: Path) -> None:
-    p = tmp_path / "session.lock"
-    p.write_text('{"pid": 999}\n', encoding="utf-8")
-    with pytest.raises(RuntimeError):
-        acquire_session_lock(path=p, pid=123, is_pid_alive=lambda pid: pid == 999)
-
-
-def test_lock_replaces_stale_pid(tmp_path: Path) -> None:
-    p = tmp_path / "session.lock"
-    p.write_text('{"pid": 999}\n', encoding="utf-8")
-    lock = acquire_session_lock(path=p, pid=123, is_pid_alive=lambda _: False)
-    assert lock.pid == 123
-    data = json.loads(p.read_text(encoding="utf-8"))
-    assert data["pid"] == 123
-
-
-@pytest.mark.parametrize(
-    "content",
-    [
-        "",
-        '{"pid":',
-        "[]",
-        "{}",
-        '{"pid": "999"}',
-        '{"pid": 0}',
-    ],
-)
-def test_lock_rejects_malformed_existing_file(tmp_path: Path, content: str) -> None:
-    path = tmp_path / "session.lock"
-    path.write_text(content, encoding="utf-8")
-
-    with pytest.raises(RuntimeError):
-        acquire_session_lock(path=path, pid=123, is_pid_alive=lambda _: False)
-
-    assert path.read_text(encoding="utf-8") == content
-
-
-def test_release_does_not_delete_another_owners_lock(tmp_path: Path) -> None:
-    path = tmp_path / "session.lock"
-    lock = acquire_session_lock(path=path, pid=123, is_pid_alive=lambda _: False)
-    path.write_text('{"pid": 456}\n', encoding="utf-8")
-
+@pytest.mark.parametrize('content', ['', 'malformed', '{"pid": 1}'])
+def test_stale_file_does_not_block_acquisition(tmp_path, content):
+    path = tmp_path / 'session.lock'
+    path.write_text(content)
+    lock = acquire_session_lock(path=path)
     lock.release()
-
-    assert path.exists()

@@ -303,3 +303,11 @@ def test_secret_redaction_patterns_and_exact_values():
         assert redact_secrets('prefix ' + value + ' suffix') == 'prefix [redacted] suffix'
     assert redact_secrets('private-value', extra_values=['private-value']) == '[redacted]'
     assert redact_secrets('normal text') == 'normal text'
+
+
+def test_redact_managed_env_and_secret_environment(tmp_path, monkeypatch):
+    from autocoder.security import redact_for_repo
+    value = 'example-' + 'credential-value'
+    (tmp_path / '.env').write_text('CUSTOM_SETTING="' + value + '"\n')
+    monkeypatch.setenv('CUSTOM_TOKEN', 'another-' + 'credential-value')
+    assert redact_for_repo(value + ' another-credential-value', managed_dir=tmp_path) == '[redacted] [redacted]'

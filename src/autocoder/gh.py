@@ -149,7 +149,10 @@ class GhClient:
         return res.stdout.strip()
 
     def ensure_labels(self, labels: Iterable[LabelDef]) -> None:
+        existing = {item["name"] for item in self._gh_json(["label", "list", "--json", "name", "--limit", "200"])}
         for lab in labels:
+            if lab.name in existing:
+                continue
             self._gh(
                 [
                     "label",
@@ -159,7 +162,6 @@ class GhClient:
                     lab.color,
                     "--description",
                     lab.description,
-                    "--force",
                 ]
             )
 

@@ -553,15 +553,10 @@ def _discover_default_branch(*, rt: _Runtime) -> str:
     except CommandError:
         pass
 
-    out = rt.runner.run(["git", "remote", "show", "origin"], cwd=rt.managed_dir, check=True).stdout
-    for ln in out.splitlines():
-        if "HEAD branch:" not in ln:
-            continue
-        b = ln.split(":", 1)[1].strip()
-        if b:
-            _log("discovered default branch via git remote show", default_branch=b)
-        return b
-
+    branch = rt.runner.run(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+                           cwd=rt.managed_dir, check=True).stdout.strip()
+    if branch.startswith("origin/") and branch.removeprefix("origin/"):
+        return branch.removeprefix("origin/")
     raise RuntimeError("unable to discover default branch via gh or git")
 
 

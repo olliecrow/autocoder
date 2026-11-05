@@ -797,3 +797,32 @@ def test_wrong_branch_is_rejected_before_push(tmp_path):
             _expected_push_branch(rt=rt, issue_state=state, issue=issue, pr=None, worktree_dir=tmp_path)
     rt.git.current_branch = lambda **kwargs: state.branch
     assert _expected_push_branch(rt=rt, issue_state=state, issue=issue, pr=None, worktree_dir=tmp_path) == state.branch
+
+
+def test_ready_run_ignores_fork_and_creates_own_pr(tmp_path):
+    from dataclasses import replace
+    worktree = tmp_path / 'worktree'
+    (worktree / '.autocoder' / 'plan').mkdir(parents=True)
+    branch = 'autocoder/issue-1-test'
+    fork = PullRequestDetail(7, 't', '', 'OPEN', 'now', 'outsider', branch, 'main', True, None, '', (), ())
+    own = replace(fork, number=8, author='trusted-user', is_cross_repository=False)
+    gh = _GhStub()
+    gh.list_prs = lambda **kwargs: [fork]
+    gh.view_pr = lambda **kwargs: fork
+    gh.search_open_prs_by_body_snippet = lambda **kwargs: []
+    created = []
+    gh.create_pr = lambda **kwargs: created.append(kwargs) or own
+    gh.edit_pr = lambda **kwargs: None
+    git = _GitStub(base_sha='base', head_sha='head')
+    codex = _CodexStub(output=CodexOutput('ready', 'done', None, 'title', 'body', 'message', ()))
+    rt = SimpleNamespace(repo=SimpleNamespace(full_name='owner/repo'),
+                         cfg=SimpleNamespace(mentions=(), allowed_github_logins=('trusted-user',)),
+                         default_branch='main', managed_dir=tmp_path / 'managed',
+                         state_path=tmp_path / 'state.json', git=git, gh=gh, codex=codex)
+    issue = IssueDetail(1, 't', '', 'OPEN', 'now', 'trusted-user', '', ('autocoder',), ())
+    gh.view_issue = lambda **kwargs: issue
+    state = IssueState(branch=branch)
+    _maybe_run_codex(rt=rt, issue_state=state, issue=issue, pr=None, worktree_dir=worktree, trigger_reasons=())
+    assert len(created) == 1
+    assert state.pr == 8
+    assert not any('fork' in body for _number, body in gh.issue_comments)
