@@ -39,6 +39,7 @@ from .security import (
     is_allowed_human_comment,
     issue_allowed_human_activity_digest,
     normalize_login,
+    redact_for_repo,
     pr_allowed_human_activity_digest,
 )
 from .skills import LocalSkill, discover_local_skills, render_skills_for_prompt
@@ -493,6 +494,7 @@ def _sync_issue_author_attachments(
         # PR context is incomplete (transient fetch failure), so do not prune potentially-valid PR attachment rows.
         downloaded_rows = list(existing_downloaded)
     skipped_urls: list[str] = []
+    skip_reasons: list[tuple[str, str]] = []
     if to_download:
         existing_bytes = sum(int(row.get("size_bytes") or 0) for row in downloaded_rows)
         remaining_bytes = max(0, _ATTACHMENT_TOTAL_CAP_BYTES - existing_bytes)
@@ -505,9 +507,11 @@ def _sync_issue_author_attachments(
                 dest_dir=artifacts_dir,
                 auth_token=auth_token,
                 auth_host=rt.repo.host,
+                repo_full_name=getattr(rt.repo, "full_name", None),
                 total_cap_bytes=remaining_bytes,
                 allowed_hosts=allowed_attachment_hosts_for_repo_host(rt.repo.host),
             )
+            skip_reasons.extend(getattr(result, "skip_reasons", ()))
             for downloaded in result.downloaded:
                 rel = downloaded.path.relative_to(worktree_dir)
                 downloaded_rows.append(
@@ -526,6 +530,7 @@ def _sync_issue_author_attachments(
         "issue_author": issue_actor,
         "downloaded": downloaded_rows,
         "skipped_urls": skipped_urls,
+        "skip_reasons": dict(skip_reasons),
     }
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     _log(
@@ -1433,7 +1438,7 @@ def _maybe_run_codex(
         _log("git status dirty after codex; committing", issue=issue.number, pr=pr_number)
         rt.git.add_all(cwd=worktree_dir)
         msg = out.commit_message or f"issue #{issue.number}: {issue.title}"
-        rt.git.commit(cwd=worktree_dir, message=msg)
+        rt.git.commit(cwd=worktree_dir, message=redact_for_repo(msg, managed_dir=rt.managed_dir))
         _log("git commit created", issue=issue.number, pr=pr_number, commit_message=msg)
     else:
         _log("git status clean after codex; skipping commit", level="debug", issue=issue.number, pr=pr_number)
@@ -2096,7 +2101,8 @@ def run_session(*, repo_ssh_url: str) -> int:
 
     _log("session lock acquired", repo=repo.full_name, lock_path=lock_path)
     git = GitClient(runner=runner)
-    gh = GhClient(runner=runner, repo=repo.full_name)
+    gh = GhClient(runner=runner, repo=repo.full_name,
+                  redact=lambda text: redact_for_repo(text, managed_dir=managed_dir))
 
     rt = _Runtime(
         repo=repo,

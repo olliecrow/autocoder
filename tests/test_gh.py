@@ -121,3 +121,18 @@ def test_edit_pr_uses_body_file_stdin_when_body_is_set() -> None:
     assert "--title" in argv
     assert "--body-file" in argv
     assert input_text == body
+
+
+def test_all_github_text_is_redacted(monkeypatch):
+    value = 'ghp_' + 'x' * 25
+    runner = _RecordingRunner()
+    gh = GhClient(runner=runner, repo='owner/repo')
+    gh.issue_comment(number=1, body=value)
+    gh.pr_comment(number=2, body=value)
+    gh.edit_pr(number=2, title=value, body=value)
+    gh.close_issue(number=1, comment=value)
+    gh.close_pr(number=2, comment=value)
+    gh.create_pr(title=value, body=value, base='main', head='branch')
+    for args, text in runner.calls:
+        assert value not in args
+        assert text is None or value not in text

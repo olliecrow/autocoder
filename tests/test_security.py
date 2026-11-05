@@ -292,3 +292,14 @@ def test_pr_digest_ignores_other_allowlisted_users_when_issue_author_is_set() ->
         allowed_logins=("alice", "bob"),
     )
     assert d2 == d1
+
+
+def test_secret_redaction_patterns_and_exact_values():
+    from autocoder.security import redact_secrets
+    samples = ['ghp_' + 'x' * 25, 'github_pat_' + 'x' * 25, 'AKIA' + 'A' * 16,
+               'sk-' + 'x' * 25, 'xoxb-' + 'x' * 15,
+               '-----BEGIN PRIVATE KEY-----\nexample\n-----END PRIVATE KEY-----']
+    for value in samples:
+        assert redact_secrets('prefix ' + value + ' suffix') == 'prefix [redacted] suffix'
+    assert redact_secrets('private-value', extra_values=['private-value']) == '[redacted]'
+    assert redact_secrets('normal text') == 'normal text'

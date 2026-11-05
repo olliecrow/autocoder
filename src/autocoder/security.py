@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import re
+from pathlib import Path
 from typing import Iterable
 
 
@@ -129,3 +132,30 @@ def pr_allowed_human_activity_digest(
     kept_review_ids.sort()
     payload = {"comments": kept_comment_ids, "reviews": kept_review_ids}
     return _sha256_hexdigest(payload)
+
+
+_SECRET_PATTERN = re.compile(
+    r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"
+    r"|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}"
+    r"|-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"
+)
+
+
+def redact_secrets(text: str, *, extra_values: Iterable[str] = ()) -> str:
+    values = sorted({v for v in extra_values if len(v) >= 8}, key=len, reverse=True)
+    for value in values:
+        text = text.replace(value, "[redacted]")
+    return _SECRET_PATTERN.sub("[redacted]", text)
+
+
+def redact_for_repo(text: str, *, managed_dir: Path | None = None) -> str:
+    values = [value for name, value in os.environ.items()
+              if any(key in name.upper() for key in ("TOKEN", "SECRET", "KEY", "PASSWORD", "PASS"))]
+    if managed_dir is not None:
+        path = managed_dir / ".env"
+        if path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                name, sep, value = line.partition("=")
+                if sep and name.strip() and not name.lstrip().startswith("#"):
+                    values.append(value.strip().strip("\"'"))
+    return redact_secrets(text, extra_values=values)

@@ -310,3 +310,11 @@ Ignore fork and non-allowlisted PRs without GitHub comments. Filter candidates b
 Never adopt the branch currently checked out by Codex. Before committing or pushing, require the expected issue branch (or a trusted PR head), never the default branch. Push `HEAD:refs/heads/<expected-branch>`.
 
 Consume input before post-run actions and cursor refresh. If these actions fail, keep a failure flag and require new issue-author input (`retrigger`) before another run, even with dirty files or pending base sync. Report the failure and add needs-info on a best-effort basis.
+
+## Attachment URL boundary
+
+Fetch only GitHub attachment paths and image hosts. Raw content must belong to the target repo. Allow the GitHub user-asset S3 host only as a redirect target. Strip credentials across hosts; send tokens only to the initial repo host or same-repo raw content. Never fetch issue, PR, or documentation HTML links. Record skipped URLs and reasons in the attachment manifest. Private attachment authentication is unverified; commit inaccessible files to the issue branch instead.
+
+## Redact outgoing text
+
+Redact known token and private-key formats in every GitHub title, body, and comment. Also redact exact values of at least eight characters from secret-named environment variables and all assignments in the managed clone `.env`. Apply the same filter to generated commit messages. Redaction is defense in depth; never give the worker unrelated credentials.

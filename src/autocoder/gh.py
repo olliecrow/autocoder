@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from typing import Any, Iterable
+from typing import Any, Iterable, Callable
+
+from .security import redact_for_repo
 
 from ._runner import Runner
 
@@ -96,9 +98,10 @@ class PullRequestDetail:
 
 
 class GhClient:
-    def __init__(self, *, runner: Runner, repo: str):
+    def __init__(self, *, runner: Runner, repo: str, redact: Callable[[str], str] = redact_for_repo):
         self._runner = runner
         self._repo = repo
+        self._redact = redact
 
     @property
     def repo(self) -> str:
@@ -111,6 +114,12 @@ class GhClient:
         input_text: str | None = None,
         check: bool = True,
     ) -> str:
+        args = list(args)
+        for index, arg in enumerate(args[:-1]):
+            if arg in {"--title", "--comment", "--body"}:
+                args[index + 1] = self._redact(args[index + 1])
+        if input_text is not None:
+            input_text = self._redact(input_text)
         res = self._runner.run(
             ["gh", *args, "-R", self._repo],
             input_text=input_text,

@@ -14,6 +14,8 @@ _URL_RE = re.compile(r"https?://[^\s<>\"]+")
 _DEFAULT_ALLOWED_HOSTS_GITHUB_DOT_COM: set[str] = {
     # canonical
     "github.com",
+    "private-user-images.githubusercontent.com",
+    "github-production-user-asset-6210df.s3.amazonaws.com",
     # common attachment/image hosts and redirect targets
     "objects.githubusercontent.com",
     "raw.githubusercontent.com",
@@ -37,12 +39,18 @@ def allowed_attachment_hosts_for_repo_host(repo_host: str) -> set[str]:
     return {host}
 
 
-def is_allowed_attachment_url(url: str, *, allowed_hosts: set[str]) -> bool:
+def is_allowed_attachment_url(url: str, *, allowed_hosts: set[str], repo_full_name: str | None = None) -> bool:
     parsed = urllib.parse.urlparse(url or "")
     if parsed.scheme.lower() != "https":
         return False
     host = (parsed.hostname or "").lower()
-    return bool(host) and host in {h.lower() for h in (allowed_hosts or set())}
+    if not host or host not in {h.lower() for h in allowed_hosts} or parsed.username or parsed.password or parsed.port not in (None, 443):
+        return False
+    if host in {"user-images.githubusercontent.com", "private-user-images.githubusercontent.com"}:
+        return bool(parsed.path.strip("/"))
+    if host == "raw.githubusercontent.com":
+        return bool(repo_full_name and parsed.path.lower().startswith("/" + repo_full_name.lower() + "/"))
+    return bool(re.match(r"^/(?:user-attachments/(?:assets|files)/[^/]+|[^/]+/[^/]+/assets/[^/]+)", parsed.path))
 
 
 class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -80,6 +88,7 @@ class DownloadedAttachment:
 class AttachmentDownloadResult:
     downloaded: tuple[DownloadedAttachment, ...]
     skipped_urls: tuple[str, ...]
+    skip_reasons: tuple[tuple[str, str], ...] = ()
 
 
 def extract_urls(text: str) -> list[str]:
@@ -123,23 +132,27 @@ def download_attachments(
     total_cap_bytes: int,
     allowed_hosts: set[str] | None = None,
     timeout_seconds: float = 60.0,
+    repo_full_name: str | None = None,
 ) -> AttachmentDownloadResult:
     dest_dir.mkdir(parents=True, exist_ok=True)
     allowed_hosts = set(allowed_hosts or _DEFAULT_ALLOWED_HOSTS_GITHUB_DOT_COM)
-    opener = urllib.request.build_opener(_SafeRedirectHandler(allowed_hosts=allowed_hosts))
+    opener = None
     auth_host = (auth_host or "").strip().lower()
 
     downloaded: list[DownloadedAttachment] = []
     skipped: list[str] = []
+    reasons: list[tuple[str, str]] = []
     used = 0
 
     for url in urls:
-        if not is_allowed_attachment_url(url, allowed_hosts=allowed_hosts):
+        if not is_allowed_attachment_url(url, allowed_hosts=allowed_hosts, repo_full_name=repo_full_name):
+            reasons.append((url, "not-attachment"))
             skipped.append(url)
             continue
 
         if used >= total_cap_bytes:
             skipped.append(url)
+            reasons.append((url, "cap"))
             continue
 
         parsed = urllib.parse.urlparse(url)
@@ -154,13 +167,15 @@ def download_attachments(
         # Only send auth to the repo host, plus GitHub-controlled attachment hosts on github.com.
         host = (parsed.hostname or "").lower()
         auth_ok = bool(auth_token and auth_host and host == auth_host)
-        if auth_token and auth_host == "github.com" and host.endswith("githubusercontent.com"):
+        if auth_token and auth_host == "github.com" and host == "raw.githubusercontent.com":
             auth_ok = True
         if auth_ok:
             headers["Authorization"] = f"token {auth_token}"
 
         req = urllib.request.Request(url, headers=headers)
         try:
+            if opener is None:
+                opener = urllib.request.build_opener(_SafeRedirectHandler(allowed_hosts=allowed_hosts))
             with opener.open(req, timeout=timeout_seconds) as resp:
                 clen = resp.headers.get("Content-Length")
                 if clen is not None:
@@ -205,6 +220,9 @@ def download_attachments(
             # The calling layer can decide whether to ask the human for an alternative.
             out_path.unlink(missing_ok=True)
             skipped.append(url)
+            reasons.append((url, "http-error"))
             continue
 
-    return AttachmentDownloadResult(downloaded=tuple(downloaded), skipped_urls=tuple(skipped))
+    known = {url for url, _reason in reasons}
+    reasons.extend((url, "cap-or-empty") for url in skipped if url not in known)
+    return AttachmentDownloadResult(downloaded=tuple(downloaded), skipped_urls=tuple(skipped), skip_reasons=tuple(reasons))

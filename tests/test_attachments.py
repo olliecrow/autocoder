@@ -128,9 +128,9 @@ def test_download_attachments_uses_distinct_names_and_removes_empty_files(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    first_url = "https://github.com/one/shared.txt"
-    second_url = "https://github.com/two/shared.txt"
-    empty_url = "https://github.com/empty.txt"
+    first_url = "https://github.com/user-attachments/files/one/shared.txt"
+    second_url = "https://github.com/user-attachments/files/two/shared.txt"
+    empty_url = "https://github.com/user-attachments/files/empty.txt"
     opener = _Opener(
         {
             first_url: b"first",
@@ -159,7 +159,7 @@ def test_download_attachments_removes_partial_file_when_cap_is_exceeded(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    url = "https://github.com/large.txt"
+    url = "https://github.com/user-attachments/files/large.txt"
     opener = _Opener({url: b"larger than cap"})
     monkeypatch.setattr("autocoder.attachments.urllib.request.build_opener", lambda handler: opener)
 
@@ -240,3 +240,23 @@ def test_attachment_sync_applies_cap_to_existing_files(tmp_path: Path, monkeypat
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["downloaded"][0]["size_bytes"] == 4
     assert manifest["skipped_urls"] == [new_url]
+
+
+def test_html_links_are_never_fetched(tmp_path, monkeypatch):
+    def no_network(*args, **kwargs):
+        raise AssertionError('not an attachment')
+    monkeypatch.setattr(urllib.request, 'build_opener', no_network)
+    result = download_attachments(urls=['https://github.com/o/r/issues/1'], dest_dir=tmp_path,
+                                  auth_token='example', auth_host='github.com', total_cap_bytes=1024)
+    assert not result.downloaded
+    assert result.skipped_urls == ('https://github.com/o/r/issues/1',)
+
+
+def test_modern_attachment_redirect_allowed_without_token():
+    handler = _SafeRedirectHandler(allowed_hosts=allowed_attachment_hosts_for_repo_host('github.com'))
+    req = urllib.request.Request('https://github.com/user-attachments/assets/example',
+                                  headers={'Authorization': 'token example'})
+    redirected = handler.redirect_request(req, None, 302, 'Found', {},
+        'https://github-production-user-asset-6210df.s3.amazonaws.com/example')
+    assert redirected is not None
+    assert redirected.get_header('Authorization') is None
