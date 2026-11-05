@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 import os
 import re
-import sys
 import signal
+import sys
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 from ._runner import CommandError, CommandTimeout, SubprocessRunner
 from .attachments import (
@@ -35,16 +35,15 @@ from .paths import (
 from .repo import RepoSpec, parse_repo_ssh_url, remote_matches_repo, slugify
 from .security import (
     filter_allowed_logins,
-    is_allowed_login,
     is_allowed_human_comment,
+    is_allowed_login,
     issue_allowed_human_activity_digest,
     normalize_login,
-    redact_for_repo,
     pr_allowed_human_activity_digest,
+    redact_for_repo,
 )
 from .skills import LocalSkill, discover_local_skills, render_skills_for_prompt
 from .state import IssueState, RepoState, load_repo_state, save_repo_state
-
 
 _POLL_SECONDS = 60
 _ATTACHMENT_TOTAL_CAP_BYTES = 200 * 1024 * 1024
@@ -82,7 +81,7 @@ class _Runtime:
 
 
 def _now_ts() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    return datetime.now(UTC).astimezone().isoformat(timespec="seconds")
 
 
 def _sanitize_log_text(text: str) -> str:

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import re
-from pathlib import Path
-from typing import Iterable
 import urllib.parse
 import urllib.request
-
+from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
 
 _URL_RE = re.compile(r"https?://[^\s<>\"]+")
 

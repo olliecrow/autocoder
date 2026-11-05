@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -18,7 +22,7 @@ jobs:
       matrix:
         python-version:
           - "3.11"
-          - "3.14"
+          - "3.15"
 
     steps:
       - name: Checkout repository
@@ -36,11 +40,14 @@ jobs:
         run: uv lock --check
 
       - name: Install locked dependencies
-        run: uv sync --frozen --extra dev
+        run: uv sync --locked
 
       - name: Run tests
-        run: uv run --frozen pytest -q
+        run: uv run --locked pytest -q
+
+      - name: Lint
+        run: uv run --locked ruff check
 
       - name: Build package
-        if: matrix.python-version == '3.14'
+        if: matrix.python-version == '3.15'
         run: uv build --no-sources

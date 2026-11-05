@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
-from typing import Any, Iterable, Callable
-
-from .security import redact_for_repo
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from typing import Any
 
 from ._runner import Runner
+from .security import redact_for_repo
 
 
 @dataclass(frozen=True)

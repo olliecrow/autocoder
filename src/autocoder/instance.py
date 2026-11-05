@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import uuid
+from pathlib import Path
 
 
 def ensure_instance_id(path: Path) -> str:

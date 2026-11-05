@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from autocoder.gh import IssueComment, IssueDetail
 import autocoder.run as runmod
+from autocoder.gh import IssueComment, IssueDetail
 from autocoder.security import issue_allowed_human_activity_digest
 from autocoder.state import IssueState, RepoState
 

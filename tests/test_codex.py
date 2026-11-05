@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from autocoder._runner import CmdResult, Runner
 from autocoder import codex as codex_mod
+from autocoder._runner import CmdResult, Runner
 from autocoder.codex import CodexClient
 
 
@@ -96,6 +96,7 @@ def test_read_timeout_s_rejects_invalid_values(monkeypatch) -> None:
 def test_logged_runner_streams_and_times_out_process_group(tmp_path):
     import os
     import sys
+
     from autocoder._runner import CommandTimeout, SubprocessRunner
     path = tmp_path / 'run.log'
     runner = SubprocessRunner()

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
+import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
-import urllib.request
 
 from autocoder.attachments import (
     _SafeRedirectHandler,

@@ -787,11 +787,12 @@ def test_push_refspec_is_explicit(tmp_path):
 
 def test_wrong_branch_is_rejected_before_push(tmp_path):
     import pytest
+
     from autocoder.run import _expected_push_branch
     state = IssueState(branch='autocoder/issue-1-test')
     issue = SimpleNamespace(number=1, author='trusted-user')
     for current in ('main', 'feature-x', ''):
-        git = SimpleNamespace(current_branch=lambda **kwargs: current)
+        git = SimpleNamespace(current_branch=lambda current=current, **kwargs: current)
         rt = SimpleNamespace(git=git, default_branch='main')
         with pytest.raises(RuntimeError, match='unexpected'):
             _expected_push_branch(rt=rt, issue_state=state, issue=issue, pr=None, worktree_dir=tmp_path)

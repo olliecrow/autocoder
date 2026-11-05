@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   security-policy:
     runs-on: ubuntu-latest
@@ -27,8 +31,7 @@ jobs:
           archive="gitleaks_${version}_linux_x64.tar.gz"
           base_url="https://github.com/gitleaks/gitleaks/releases/download/v${version}"
           curl -sSfL -o "${archive}" "${base_url}/${archive}"
-          curl -sSfL -o checksums.txt "${base_url}/gitleaks_${version}_checksums.txt"
-          grep "${archive}" checksums.txt | sha256sum -c -
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  ${archive}" | sha256sum -c -
           tar -xzf "${archive}"
           install -m 0755 gitleaks "$RUNNER_TEMP/gitleaks"
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"

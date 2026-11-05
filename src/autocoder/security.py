@@ -4,8 +4,8 @@ import hashlib
 import json
 import os
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 
 def normalize_allowed_logins(logins: Iterable[str]) -> frozenset[str]:

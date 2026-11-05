@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
-from pathlib import Path
-import subprocess
 import signal
+import subprocess
 import tempfile
-from typing import Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -82,8 +82,7 @@ class SubprocessRunner(Runner):
                 env={**os.environ, **env} if env else None,
                 input=input_text,
                 text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 timeout=timeout_s,
             )
         except subprocess.TimeoutExpired as e:

@@ -3,8 +3,8 @@ from __future__ import annotations
 from io import StringIO
 from pathlib import Path
 
-from autocoder._runner import CmdResult, Runner
 from autocoder import preflight
+from autocoder._runner import CmdResult, Runner
 
 
 class _FakeRunner(Runner):

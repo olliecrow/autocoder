@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from ._runner import Runner
-
 
 _CODEX_MODEL = "gpt-5.6-sol"
 _CODEX_REASONING_EFFORT = "high"

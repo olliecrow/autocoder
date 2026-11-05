@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from autocoder.security import (
     filter_allowed_logins,
     is_allowed_login,
