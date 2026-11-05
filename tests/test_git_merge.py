@@ -64,7 +64,7 @@ def test_merge_leaves_conflicts_for_resolution_then_commit_completes_it(repo: Pa
     assert git.is_ancestor(cwd=repo, ancestor="main", descendant="issue")
 
 
-def test_added_lines_skip_merged_in_history_but_keep_conflict_resolutions(repo: Path) -> None:
+def test_scan_excludes_upstream_blobs_but_keeps_conflict_resolutions(repo: Path) -> None:
     _commit_file(repo, "main", "f.txt", "from main\n")
     _commit_file(repo, "main", "upstream.txt", "already on the default branch\n")
     _commit_file(repo, "issue", "f.txt", "from issue\n")
@@ -76,7 +76,7 @@ def test_added_lines_skip_merged_in_history_but_keep_conflict_resolutions(repo: 
     git.add_all(cwd=repo)
     git.commit(cwd=repo, message="merge main")
 
-    added = git.added_lines(cwd=repo, exclude_refs=["main", "pushed"]).splitlines()
+    added = "\n".join(git.outgoing_scan_text(cwd=repo, exclude_refs=["main", "pushed"])).splitlines()
 
     assert "new outgoing line" in added
     assert "resolved line" in added
@@ -96,3 +96,34 @@ def test_conflict_guard_checks_index_and_staged_markers(repo):
     assert git.has_unresolved_conflicts(cwd=repo)  # markers remain in the index
     git.add_all(cwd=repo)
     assert not git.has_unresolved_conflicts(cwd=repo)
+
+
+@pytest.mark.parametrize("location", ["filename", "message", "binary", "text"])
+def test_outgoing_scan_catches_secret_in_each_surface(repo, location):
+    from autocoder.security import contains_likely_secret
+    base = _git(repo, "rev-parse", "HEAD").strip()
+    token = "ghp_" + "A" * 30
+    name = token if location == "filename" else "new"
+    content = b"\x00" + token.encode() if location == "binary" else (
+        token.encode() if location == "text" else b"base\n")
+    (repo / name).write_bytes(content)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", token if location == "message" else "change")
+    git = GitClient(runner=SubprocessRunner())
+    assert any(contains_likely_secret(text) for text in git.outgoing_scan_text(cwd=repo, exclude_refs=[base]))
+
+
+@pytest.mark.parametrize("content", [b"\xff\x00", b"x" * (1024 * 1024 + 1)])
+def test_outgoing_scan_blocks_unscannable_blobs(repo, content):
+    base = _git(repo, "rev-parse", "HEAD").strip()
+    (repo / "new").write_bytes(content)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "change")
+    with pytest.raises(RuntimeError, match="push blocked"):
+        list(GitClient(runner=SubprocessRunner()).outgoing_scan_text(cwd=repo, exclude_refs=[base]))
+
+
+def test_outgoing_scan_fails_on_git_error(repo):
+    from autocoder._runner import CommandError
+    with pytest.raises(CommandError):
+        list(GitClient(runner=SubprocessRunner()).outgoing_scan_text(cwd=repo, exclude_refs=["missing-ref"]))

@@ -795,8 +795,8 @@ def _refuse_likely_secret_push(*, rt: _Runtime, worktree_dir: Path, branch: str)
     exclude_refs = [f"origin/{rt.default_branch}"]
     if rt.git.remote_branch_exists(cwd=rt.managed_dir, remote="origin", branch=branch):
         exclude_refs.append(f"origin/{branch}")
-    if contains_likely_secret(rt.git.added_lines(cwd=worktree_dir, exclude_refs=exclude_refs),
-                              managed_dir=rt.managed_dir):
+    if any(contains_likely_secret(text, managed_dir=rt.managed_dir)
+           for text in rt.git.outgoing_scan_text(cwd=worktree_dir, exclude_refs=exclude_refs)):
         raise RuntimeError("push blocked: outgoing commits add a likely secret. "
                            "Remove it from the local branch history, then reply retrigger")
 

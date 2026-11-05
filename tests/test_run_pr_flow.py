@@ -35,9 +35,9 @@ class _GitStub:
     def remote_branch_exists(self, **kwargs):
         return True
 
-    def added_lines(self, *, cwd: Path, exclude_refs) -> str:  # type: ignore[no-untyped-def]
+    def outgoing_scan_text(self, *, cwd: Path, exclude_refs):  # type: ignore[no-untyped-def]
         assert exclude_refs == ["origin/main", "origin/autocoder/issue-1-test"]
-        return self.outgoing_added
+        yield self.outgoing_added
 
     def current_branch(self, *, cwd: Path):
         return "autocoder/issue-1-test"

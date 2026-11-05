@@ -395,7 +395,13 @@ Fetch only GitHub attachment paths and image hosts. Raw content must belong to t
 
 Redact known token and private-key formats in every GitHub title, body, and comment. Also redact exact values of at least eight characters from secret-named environment variables and all assignments in the managed clone `.env`. Apply the same filter to generated commit messages. Redaction is defense in depth; never give the worker unrelated credentials.
 
-Before each push, scan the lines that outgoing commits add (`HEAD --not origin/<default-branch> origin/<branch>`; merge commits contribute only their conflict resolutions). Block the push as a run failure when a line has a known token format or the value (at least eight characters) of a secret-named environment or `.env` variable. Only secret-named `.env` values count, so ordinary settings do not block pushes. Encoded secrets are not detected.
+Before each push, scan outgoing commit messages, filenames, and new blob contents
+(`HEAD --not origin/<default-branch> origin/<branch>`). Block known token formats
+and secret-named environment or `.env` values of at least eight characters.
+Scan UTF-8 binary blobs too, including NUL bytes. Block non-UTF-8 blobs and blobs
+over 1 MiB with an operator-review notice. Only new Git objects are read; unchanged
+upstream blobs are excluded. Git or decoding failures block the push. Encoded or
+transformed secrets are not detected.
 
 ## Execution isolation default
 

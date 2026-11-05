@@ -144,24 +144,29 @@ class GitClient:
     def commit(self, *, cwd: Path, message: str) -> None:
         self._git(["commit", "-m", message], cwd=cwd)
 
-    def added_lines(self, *, cwd: Path, exclude_refs: Sequence[str]) -> str:
-        """
-        Return lines that commits in `HEAD --not <exclude_refs>` add.
-
-        Merge commits show only their conflict resolutions (`--cc`), not the merged-in history.
-        """
-        out = self._git(["log", "-p", "--cc", "--format=", "--no-color", "--no-ext-diff", "--no-textconv",
-                         "HEAD", "--not", *exclude_refs, "--"], cwd=cwd)
-        added: list[str] = []
-        columns = 0  # One prefix column per parent; known only inside a hunk.
-        for line in out.splitlines():
-            if line.startswith("diff "):
-                columns = 0
-            elif line.startswith("@@"):
-                columns = len(line) - len(line.lstrip("@")) - 1
-            elif columns and "+" in line[:columns] and "-" not in line[:columns]:
-                added.append(line[columns:])
-        return "\n".join(added)
+    def outgoing_scan_text(self, *, cwd: Path, exclude_refs: Sequence[str]) -> Iterable[str]:
+        """Scan metadata and each new blob, with a bounded per-blob read."""
+        revisions = ["HEAD", "--not", *exclude_refs, "--"]
+        yield self._git(["log", "--format=%B", "--name-only", "--diff-merges=first-parent", *revisions], cwd=cwd)
+        objects = self._git(["rev-list", "--objects", *revisions], cwd=cwd)
+        yield objects  # Includes filenames even for empty or binary files.
+        ids = [line.split(" ", 1)[0] for line in objects.splitlines()]
+        if not ids:
+            return
+        metadata = self._runner.run(
+            ["git", "cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"],
+            cwd=cwd, input_text="\n".join(ids) + "\n", check=True,
+        ).stdout
+        for line in metadata.splitlines():
+            oid, kind, size = line.split()
+            if kind != "blob":
+                continue
+            if int(size) > 1024 * 1024:
+                raise RuntimeError("push blocked: outgoing blob exceeds the 1 MiB scan limit; operator review required")
+            try:
+                yield self._git(["cat-file", "blob", oid], cwd=cwd)
+            except UnicodeError:
+                raise RuntimeError("push blocked: outgoing binary blob is not UTF-8; operator review required") from None
 
     def push(self, *, cwd: Path, branch: str) -> None:
         self._git(["push", "-u", "origin", f"HEAD:refs/heads/{branch}"], cwd=cwd)
