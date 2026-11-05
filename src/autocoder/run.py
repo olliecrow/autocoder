@@ -2119,6 +2119,15 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
         )
 
 
+def _resolve_gh_login(gh: GhClient) -> str:
+    try:
+        return gh.authenticated_login()
+    except RuntimeError as exc:  # includes CommandError
+        # Fail closed: without the login, only PRs by the issue author are trusted.
+        _log_exception("unable to resolve gh login; PRs must be authored by the issue author", exc, level="warn")
+        return ""
+
+
 def run_session(*, repo_ssh_url: str) -> int:
     """
     Run autocoder for a single repo session.
@@ -2194,7 +2203,7 @@ def run_session(*, repo_ssh_url: str) -> int:
     try:
         state = load_repo_state(rt.state_path)
         _ensure_managed_clone(rt=rt)
-        rt = replace(rt, default_branch=_discover_default_branch(rt=rt), gh_login=gh.authenticated_login())
+        rt = replace(rt, default_branch=_discover_default_branch(rt=rt), gh_login=_resolve_gh_login(gh))
         _ensure_labels(rt=rt)
     except BaseException:
         lock.release()

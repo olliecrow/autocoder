@@ -156,3 +156,14 @@ def test_authenticated_login_reads_gh_user() -> None:
             return CmdResult(args=list(args), returncode=0, stdout="operator\n", stderr="")
 
     assert GhClient(runner=_Runner(), repo="owner/repo").authenticated_login() == "operator"
+
+
+def test_unresolved_gh_login_disables_own_pr_exception() -> None:
+    from autocoder._runner import CommandError
+    from autocoder.run import _resolve_gh_login
+
+    class _Runner(Runner):
+        def run(self, args, **kwargs) -> CmdResult:  # type: ignore[no-untyped-def]
+            raise CommandError(result=CmdResult(args=list(args), returncode=1, stdout="", stderr="forbidden"))
+
+    assert _resolve_gh_login(GhClient(runner=_Runner(), repo="owner/repo")) == ""
