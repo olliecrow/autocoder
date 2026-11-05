@@ -96,6 +96,8 @@ def test_conflict_guard_checks_index_and_staged_markers(repo):
     assert git.has_unresolved_conflicts(cwd=repo)  # markers remain in the index
     git.add_all(cwd=repo)
     assert not git.has_unresolved_conflicts(cwd=repo)
+    (repo / "f.txt").write_text("<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> main\n")
+    assert git.has_unresolved_conflicts(cwd=repo)  # unstaged markers with a resolved index
 
 
 @pytest.mark.parametrize("location", ["filename", "message", "binary", "text"])

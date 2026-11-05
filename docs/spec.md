@@ -343,6 +343,13 @@ Required behavior:
 - if merges produce conflicts, autocoder leaves them in the worktree; codex resolves them and reports the resolution clearly in the PR/issue.
 - when merge-syncing from base branch, treat it as high risk: inspect conflicts carefully, run relevant verification after merge, and return `ready` (which pushes the merge) only when confidence is high that neither the issue branch behavior nor merged base-branch behavior regressed.
 
+Before a ready run stages or commits files, refuse unresolved index entries and
+conflict markers in staged or unstaged diffs. Leave the merge for an operator to
+resolve and stage, then wait for new author input. A clean merge followed by
+no_action or needs_info stays local. The default SHA cursor records an attempt,
+not publication: check the remote issue branch and post one sync notice per SHA
+when it is still behind. A later ready run verifies and pushes the local merge.
+
 ## Communication contract
 Goals:
 - be explicit about current state, what was tried, what remains, and what input is needed.
@@ -403,6 +410,12 @@ over 1 MiB with an operator-review notice. Only new Git objects are read; unchan
 upstream blobs are excluded. Git or decoding failures block the push. Encoded or
 transformed secrets are not detected.
 
+Security CI runs weekly and on pushes/PRs. It checks commit messages and added
+file lines, including merge changes against the first parent. Invalid ranges
+and scan errors fail the check. Missing or zero push bases scan the tip commit.
+The path checker checks each match independently; gitleaks defaults alone do
+not cover all home paths.
+
 ## Execution isolation default
 
 Default to `codex_sandbox = "workspace-write"`. Keep unrestricted execution as an explicit `danger-full-access` opt-in for isolated workers. This changes earlier behavior: sandboxed tasks can fail when they need network or external filesystem access. autocoder performs its own commit and push outside the sandbox. Use a single-repo fine-grained GitHub token, a repo deploy key, and default-branch protection. Trust repo writers and allowlisted issue authors at code-execution level. No live Codex run was used to validate sandbox-dependent task capabilities.
@@ -428,18 +441,3 @@ Doctor fails on invalid or empty trust config, disabled issues, insufficient rep
 Only the multi-issue `issues` state schema is supported. Reject legacy single-issue files with a clear setup error; remove the old state file to start fresh. Validate retry and PR-search flags as booleans. Aggregate trusted PR author conflicts into one notice per candidate set.
 
 PR discovery skips head lookups when the remote branch does not exist. PR summaries include trust fields, so untrusted candidates need no detail request. The issue-reference search runs once per ownership state.
-
-
-Before a ready run stages or commits files, refuse unresolved index entries and
-conflict markers in staged or unstaged diffs. Leave the merge for an operator to
-resolve and stage, then wait for new author input. A clean merge followed by
-no_action or needs_info stays local. The default SHA cursor records an attempt,
-not publication: check the remote issue branch and post one sync notice per SHA
-when it is still behind. A later ready run verifies and pushes the local merge.
-
-
-Security CI runs weekly and on pushes/PRs. It checks commit messages and added
-file lines, including merge changes against the first parent. Invalid ranges
-and scan errors fail the check. Missing or zero push bases scan the tip commit.
-The path checker checks each match independently; gitleaks defaults alone do
-not cover all home paths.

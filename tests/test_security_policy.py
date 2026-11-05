@@ -101,3 +101,35 @@ def test_gitleaks_path_allowlist_is_per_secret_and_anchored(tmp_path):
     result = subprocess.run([scanner, "dir", "--redact", "--no-banner", "--config",
                              str(ROOT / ".gitleaks.toml"), str(tmp_path)], capture_output=True)
     assert result.returncode == 1
+
+
+def test_scanner_command_failure_is_not_clean(tmp_path, monkeypatch):
+    target = tmp_path / "input"
+    target.write_text("safe")
+    fakebin = tmp_path / "bin"
+    fakebin.mkdir()
+    fake = fakebin / "grep"
+    fake.write_text("#!/bin/sh\nexit 2\n")
+    fake.chmod(0o700)
+    monkeypatch.setenv("PATH", str(fakebin) + os.pathsep + os.environ["PATH"])
+    assert scan(target).returncode == 2
+
+
+def test_merge_added_line_is_scanned(repo):
+    script = setup_scripts(repo)
+    _git(repo, "checkout", "-q", "main")
+    (repo / "f.txt").write_text("main\n")
+    _git(repo, "add", "f.txt")
+    _git(repo, "commit", "-qm", "main change")
+    _git(repo, "checkout", "-q", "issue")
+    (repo / "f.txt").write_text("issue\n")
+    _git(repo, "add", "f.txt")
+    _git(repo, "commit", "-qm", "issue change")
+    base = _git(repo, "rev-parse", "HEAD").strip()
+    result = subprocess.run(["git", "merge", "--no-edit", "main"], cwd=repo, capture_output=True)
+    assert result.returncode == 1
+    (repo / "f.txt").write_text("++ /home/" + "someone/project\n")
+    _git(repo, "add", "f.txt")
+    _git(repo, "commit", "-qm", "resolve")
+    tip = _git(repo, "rev-parse", "HEAD").strip()
+    assert check_range(repo, script, base, tip).returncode != 0
