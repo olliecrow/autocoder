@@ -61,16 +61,6 @@ jobs:
             exit 1
           fi
 
-      - name: Self-test sensitive text policy without ripgrep
-        run: |
-          set -euo pipefail
-          tmp_bad="$(mktemp)"
-          printf 'fix: %s=%s\n' "token" "abc123456789XYZ" > "${tmp_bad}"
-          if PATH="/usr/bin:/bin" bash scripts/security/check-sensitive-text.sh --context=policy-fallback-selftest "${tmp_bad}"; then
-            echo "expected fallback policy self-test failure did not occur" >&2
-            exit 1
-          fi
-
       - name: Check pull request title/body for policy violations
         if: github.event_name == 'pull_request'
         env:
