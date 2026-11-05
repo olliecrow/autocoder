@@ -385,7 +385,7 @@ Ignore fork and non-allowlisted PRs without GitHub comments. Filter candidates b
 
 Never adopt the branch currently checked out by Codex. Before committing or pushing, require the expected issue branch (or a trusted PR head), never the default branch. Push `HEAD:refs/heads/<expected-branch>`.
 
-Consume input before post-run actions and cursor refresh. An interrupt (Ctrl-C or SIGTERM) during a run restores the input cursors, so a restart handles the same input. If these actions fail, keep a failure flag and require new issue-author input (`retrigger`) before another run, even with dirty files or pending base sync. Report the failure and add needs-info on a best-effort basis.
+Consume input before post-run actions and cursor refresh. An interrupt (Ctrl-C or SIGTERM) during a run restores the input cursors, so a restart handles the same input. If these actions fail, keep a failure flag and require new issue-author input (`retrigger`) before another run, even with dirty files or pending base sync. Report the failure once per run (polls without new input stay quiet) and add needs-info on a best-effort basis.
 
 ## Attachment URL boundary
 

@@ -1984,6 +1984,9 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
             issue_state.last_seen_allowed_pr_digest = pr_digest_cur
             try:
                 issue_state.run_failed = False
+                # Each new run reports its own failure; only polls without new input stay quiet.
+                if issue_state.last_notice == "run-failed":
+                    issue_state.last_notice = None
                 _merge_default_branch(rt=rt, issue_number=issue_full.number, worktree_dir=worktree_dir,
                                       default_ref=default_ref)
                 _maybe_run_codex(

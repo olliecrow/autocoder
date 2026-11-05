@@ -695,3 +695,29 @@ def test_interrupt_during_codex_keeps_author_request_for_restart(tmp_path, monke
     monkeypatch.setattr(runmod, '_maybe_run_codex', lambda **kwargs: calls.append(kwargs['trigger_reasons']))
     runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
     assert calls == ['interrupted', ('issue_updated',)]
+
+
+def test_repeat_failure_after_retrigger_posts_a_new_notice(tmp_path, monkeypatch):
+    from dataclasses import replace
+    issue = IssueDetail(1, 't', '', 'OPEN', 'now', 'trusted-user', '', ('autocoder', 'autocoder:claimed'), ())
+    branch = 'autocoder/issue-1-test'
+    gh = _GhStub(issue=issue)
+    gh.issue_add_labels = lambda **kwargs: None
+    git = _GitStub(default_sha='base', branch=branch, dirty_status=' M file')
+    state = RepoState(issues={1: IssueState(branch=branch)})
+    worktree = tmp_path / 'worktree'
+    worktree.mkdir()
+    monkeypatch.setattr(runmod, 'issue_worktree_dir', lambda *args: worktree)
+    monkeypatch.setattr(runmod, '_ensure_worktree', lambda **kwargs: worktree)
+
+    def fail(**kwargs):
+        raise RuntimeError('push rejected')
+
+    monkeypatch.setattr(runmod, '_maybe_run_codex', fail)
+    runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert sum('run failed' in body for _, body in gh.issue_comments) == 1
+    comment = IssueComment('c2', 'trusted-user', 'retrigger', 'later', 'later', '')
+    gh._issue = replace(issue, updated_at='later', comments=(comment,))
+    runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert sum('run failed' in body for _, body in gh.issue_comments) == 2
