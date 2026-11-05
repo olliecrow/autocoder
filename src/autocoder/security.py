@@ -134,10 +134,17 @@ def pr_allowed_human_activity_digest(
     return _sha256_hexdigest(payload)
 
 
+# Fixed-prefix token formats. A private-key header matches without its END line;
+# redaction then removes the rest of the text, so a truncated key body never leaks.
 _SECRET_PATTERN = re.compile(
     r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"
-    r"|AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}"
-    r"|-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"
+    r"|AKIA[0-9A-Z]{16}|(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}"
+    r"|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"  # JWT
+    r"|AIza[0-9A-Za-z_-]{35}|glpat-[0-9A-Za-z_-]{20,}|(?:sk|rk)_live_[0-9A-Za-z]{20,}"
+    r"|(?<![A-Za-z0-9_])npm_[A-Za-z0-9]{36}|pypi-AgEIcHlwaS5vcmc[0-9A-Za-z_-]{50,}"
+    r"|(?<![A-Za-z0-9_])hf_[A-Za-z0-9]{30,}"
+    r"|https://hooks\.slack\.com/services/T[A-Za-z0-9_]+/B[A-Za-z0-9_]+/[A-Za-z0-9_]+"
+    r"|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----|[\s\S]*)"
 )
 
 
@@ -149,7 +156,10 @@ def redact_secrets(text: str, *, extra_values: Iterable[str] = ()) -> str:
 
 
 def _secret_named(name: str) -> bool:
-    return any(key in name.upper() for key in ("TOKEN", "SECRET", "KEY", "PASSWORD", "PASS"))
+    # Match whole name parts, so OPENAI_API_KEY and PGPASSWORD count but KEYBOARD and BYPASS do not.
+    parts = re.split(r"[^A-Z0-9]+", name.upper())
+    return any(part in ("KEY", "APIKEY", "PASS") or part.endswith(("TOKEN", "SECRET", "PASSWORD", "PASSWD"))
+               for part in parts)
 
 
 def _env_file_assignments(managed_dir: Path | None) -> list[tuple[str, str]]:

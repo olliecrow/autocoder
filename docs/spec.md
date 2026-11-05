@@ -406,7 +406,7 @@ Fetch only GitHub attachment paths and image hosts. Raw content must belong to t
 
 ## Redact outgoing text
 
-Redact known token and private-key formats in every GitHub title, body, and comment. Also redact exact values of at least eight characters from secret-named environment variables and all assignments in the managed clone `.env`. Apply the same filter to generated commit messages. Redaction is defense in depth; never give the worker unrelated credentials.
+Redact known token formats (GitHub, AWS, OpenAI/Anthropic-style `sk-`, Slack tokens and webhooks, JWT, Google API, GitLab, Stripe live, npm, PyPI, Hugging Face) and private keys (a `BEGIN ... PRIVATE KEY` header alone is enough) in every GitHub title, body, and comment. Also redact exact values of at least eight characters from secret-named environment variables (a `_`-separated name part is `KEY`, `APIKEY`, or `PASS`, or ends with `TOKEN`, `SECRET`, `PASSWORD`, or `PASSWD`) and all assignments in the managed clone `.env`. Apply the same filter to generated commit messages. Redaction is defense in depth; never give the worker unrelated credentials.
 
 Before each push, scan outgoing commit messages, filenames, and new blob contents
 (`HEAD --not origin/<default-branch> origin/<branch>`). Block known token formats

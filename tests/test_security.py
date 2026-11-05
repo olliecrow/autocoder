@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from autocoder.security import (
     filter_allowed_logins,
     is_allowed_login,
@@ -304,6 +306,48 @@ def test_secret_redaction_patterns_and_exact_values():
         assert redact_secrets('prefix ' + value + ' suffix') == 'prefix [redacted] suffix'
     assert redact_secrets('private-value', extra_values=['private-value']) == '[redacted]'
     assert redact_secrets('normal text') == 'normal text'
+
+
+# Fake values with the real shapes, built at runtime so scanners do not flag this file.
+_B64 = "A1b2C3d4E5f6G7h8I9j0"
+_NEW_TOKEN_SHAPES = {
+    "jwt": "eyJ" + _B64 + ".eyJ" + _B64 + "." + _B64,
+    "google": "AIza" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r",
+    "gitlab": "glpat-" + _B64,
+    "stripe": "sk_" + "live_" + _B64 + "x",
+    "npm": "npm_" + _B64 + "K1l2M3n4O5p6Q7r8",
+    "pypi": "pypi-" + "AgEIcHlwaS5vcmc" + _B64 * 3,
+    "huggingface": "hf_" + _B64 + "K1l2M3n4O5",
+    "slack-webhook": "https://hooks.slack.com/services/" + "T0123ABCD/B0123ABCD/" + _B64,
+    "pem-without-end": "-----BEGIN OPENSSH " + "PRIVATE KEY-----\nb3BlbnNzaC1rZXk",
+}
+
+
+@pytest.mark.parametrize("kind", sorted(_NEW_TOKEN_SHAPES))
+def test_known_token_formats_block_push_and_are_redacted(kind):
+    from autocoder.security import contains_likely_secret, redact_secrets
+    value = _NEW_TOKEN_SHAPES[kind]
+    assert contains_likely_secret("config: " + value + "\n")
+    redacted = redact_secrets("config: " + value)
+    assert redacted.startswith("config: [redacted]") and value not in redacted
+    assert _B64 not in redacted and "b3BlbnNzaC1rZXk" not in redacted
+
+
+@pytest.mark.parametrize("text", ["name: kubernetes-task-scheduler-configuration",
+                                  "path: /dev/disk-by-partition-label-example", "load_hf_" + "a" * 30])
+def test_ordinary_identifiers_are_not_tokens(text):
+    from autocoder.security import contains_likely_secret
+    assert not contains_likely_secret(text)
+
+
+@pytest.mark.parametrize("name,secret", [
+    ("OPENAI_API_KEY", True), ("AWS_SECRET_ACCESS_KEY", True), ("GH_TOKEN", True), ("PGPASSWORD", True),
+    ("DB_PASS", True), ("APIKEY", True), ("MYSQL_PASSWD", True),
+    ("KEYBOARD_LAYOUT", False), ("MONKEY_PATH", False), ("BYPASS_PROXY", False), ("COMPASS_DIR", False),
+])
+def test_secret_names_match_whole_name_parts(name, secret):
+    from autocoder.security import _secret_named
+    assert _secret_named(name) is secret
 
 
 def test_redact_managed_env_and_secret_environment(tmp_path, monkeypatch):
