@@ -664,3 +664,34 @@ def test_default_branch_merge_sync_runs_once_per_default_sha(tmp_path, monkeypat
     runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
     assert calls[-1] == ('issue_updated',)
     assert len(merges) == 3
+
+
+def test_interrupt_during_codex_keeps_author_request_for_restart(tmp_path, monkeypatch):
+    import pytest
+    comment = IssueComment('c1', 'trusted-user', 'please do X', 't1', 't1', '')
+    issue = IssueDetail(1, 't', '', 'OPEN', 't1', 'trusted-user', '', ('autocoder', 'autocoder:claimed'), (comment,))
+    branch = 'autocoder/issue-1-test'
+    gh = _GhStub(issue=issue)
+    git = _GitStub(default_sha='base', branch=branch, dirty_status='')
+    state = RepoState(issues={1: IssueState(branch=branch, last_seen_issue_updated_at='t0',
+                                            last_seen_default_branch_sha='base',
+                                            last_seen_allowed_issue_digest='old')})
+    worktree = tmp_path / 'worktree'
+    worktree.mkdir()
+    monkeypatch.setattr(runmod, 'issue_worktree_dir', lambda *args: worktree)
+    monkeypatch.setattr(runmod, '_ensure_worktree', lambda **kwargs: worktree)
+    calls = []
+
+    def interrupted(**kwargs):
+        calls.append('interrupted')
+        raise KeyboardInterrupt  # Ctrl-C, or SIGTERM through the session handler
+
+    monkeypatch.setattr(runmod, '_maybe_run_codex', interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert state.issues[1].last_seen_issue_updated_at == 't0'
+    assert state.issues[1].last_seen_allowed_issue_digest == 'old'
+    # run_session saves this state in `finally`; a restart must handle the same request.
+    monkeypatch.setattr(runmod, '_maybe_run_codex', lambda **kwargs: calls.append(kwargs['trigger_reasons']))
+    runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert calls == ['interrupted', ('issue_updated',)]

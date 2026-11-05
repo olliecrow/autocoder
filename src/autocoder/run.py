@@ -1962,6 +1962,14 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
                 worktree_dir=worktree_dir,
             )
             # Persist consumed input before reporting or refresh, which can also fail.
+            # An interrupt (Ctrl-C or SIGTERM) restores it, so a restart handles the same input.
+            state_before_run = (
+                issue_state.last_seen_issue_updated_at,
+                issue_state.last_seen_allowed_issue_digest,
+                issue_state.last_seen_pr_updated_at,
+                issue_state.last_seen_allowed_pr_digest,
+                issue_state.run_failed,
+            )
             issue_state.last_seen_issue_updated_at = issue_full.updated_at
             issue_state.last_seen_allowed_issue_digest = issue_digest_cur
             issue_state.last_seen_pr_updated_at = pr_updated_at
@@ -1980,6 +1988,15 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
                 )
                 if not issue_state.run_failed:
                     issue_state.last_notice = None
+            except KeyboardInterrupt:
+                (
+                    issue_state.last_seen_issue_updated_at,
+                    issue_state.last_seen_allowed_issue_digest,
+                    issue_state.last_seen_pr_updated_at,
+                    issue_state.last_seen_allowed_pr_digest,
+                    issue_state.run_failed,
+                ) = state_before_run
+                raise
             except Exception as exc:
                 issue_state.run_failed = True
                 _log_exception("post-Codex action failed", exc, issue=issue_full.number)
