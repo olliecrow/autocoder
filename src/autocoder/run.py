@@ -1155,7 +1155,7 @@ def _build_codex_prompt(
             "",
             "Working approach:",
             f"- 1. autocoder fetched `origin` and, when the worktree was clean, merged `origin/{rt.default_branch}` into this branch before this run. Inspect `git status` and any in-progress merge; recover interrupted work before starting new work.",
-            "- 2. If a merge is in progress, resolve every conflicted file in place. Inspect conflicts carefully and verify both inherited and issue behavior.",
+            "- 2. If a merge is in progress, resolve every conflicted file in place and remove all conflict markers; do not stage. Inspect conflicts carefully and verify both inherited and issue behavior. autocoder refuses to commit a conflicted file that still has markers.",
             "- 3. Read the trusted context and relevant repository instructions. Establish the intended outcome, constraints, risks, and acceptance checks before choosing a method.",
             "- 4. Resolve context from code and tests. Ask only when a missing decision materially changes behavior, authority, cost, or risk.",
             "- 5. Match effort to risk: act directly on small work; use a short plan and broader checks for material work. Keep one implementation owner.",
@@ -1478,17 +1478,23 @@ def _maybe_run_codex(
 
     expected_branch = _expected_push_branch(rt=rt, issue_state=issue_state, issue=issue,
                                             pr=pr, worktree_dir=worktree_dir)
-    if rt.git.has_unresolved_conflicts(cwd=worktree_dir):
+    unresolved = rt.git.unresolved_conflict_paths(cwd=worktree_dir)
+    if unresolved:
         default_sha = rt.git.rev_parse(cwd=worktree_dir, rev=f"origin/{rt.default_branch}")
-        _notice_once(rt=rt, issue_state=issue_state, issue_number=issue.number,
-                     key=f"default-sync:{default_sha}",
-                     body="Push blocked: unresolved index entries or conflict markers remain. "
-                          "Resolve and stage the conflicts, then reply `retrigger` to verify and push.")
+        shown = ", ".join(f"`{path}`" for path in unresolved[:10]) + (" and more" if len(unresolved) > 10 else "")
+        # Report every blocked run; the shared key stops a second, post-run sync notice.
+        rt.gh.issue_comment(number=issue.number, body=_wrap_comment(
+            f"Push blocked: unresolved merge conflicts remain in {shown}. Nothing was committed or pushed. "
+            "Reply `retrigger`, with guidance if useful, so Codex can finish the resolution.",
+            redactions=redactions))
+        issue_state.last_notice = f"default-sync:{default_sha}"
         return
-    # Commit/push if there are remaining local changes after codex execution.
-    if rt.git.status_porcelain(cwd=worktree_dir).strip():
+    # Commit/push remaining local changes, including a resolved merge, after codex execution.
+    if rt.git.merge_in_progress(cwd=worktree_dir) or rt.git.status_porcelain(cwd=worktree_dir).strip():
         _log("git status dirty after codex; committing", issue=issue.number, pr=pr_number)
         rt.git.add_all(cwd=worktree_dir)
+        if rt.git.unresolved_conflict_paths(cwd=worktree_dir):
+            raise RuntimeError("merge still has unmerged paths after staging; restore the worktree and reply retrigger")
         msg = out.commit_message or f"issue #{issue.number}: {issue.title}"
         rt.git.commit(cwd=worktree_dir, message=redact_for_repo(msg, managed_dir=rt.managed_dir))
         _log("git commit created", issue=issue.number, pr=pr_number, commit_message=msg)
@@ -2018,7 +2024,8 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
                     worktree_dir=worktree_dir,
                     trigger_reasons=tuple(trigger_reasons),
                 )
-                if not issue_state.run_failed:
+                # Keep a default-sync key so each default-branch SHA gets at most one sync notice.
+                if not issue_state.run_failed and not (issue_state.last_notice or "").startswith("default-sync:"):
                     issue_state.last_notice = None
             except KeyboardInterrupt:
                 (
@@ -2068,18 +2075,19 @@ def _run_one_iteration(*, rt: _Runtime, state: RepoState) -> None:
                 )
             # One merge-sync attempt per default-branch SHA; new issue-author input allows another.
             issue_state.last_seen_default_branch_sha = default_branch_sha
+            # An unpushed branch publishes the merge with its first push, so it needs no notice.
             if (
                 issue_state.branch
                 and not issue_state.run_failed
+                and rt.git.remote_branch_exists(cwd=rt.managed_dir, remote="origin", branch=issue_state.branch)
                 and not rt.git.is_ancestor(cwd=rt.managed_dir, ancestor=default_ref, descendant=f"origin/{issue_state.branch}")
             ):
                 _log("default branch sync still needed after codex", level="warn", issue=issue_full.number,
                      branch=issue_state.branch, default_sha=_short_sha(default_branch_sha))
                 _notice_once(rt=rt, issue_state=issue_state, issue_number=issue_full.number,
                              key=f"default-sync:{default_branch_sha}",
-                             body=f"could not merge `{default_ref}` into the remote `{issue_state.branch}`. "
-                                  "The sync is not published. Resolve and stage any conflicts, "
-                                  "then reply `retrigger` to verify and push.")
+                             body=f"`{default_ref}` is not merged into the remote `{issue_state.branch}` yet. "
+                                  "Reply `retrigger` so Codex can finish the merge and autocoder can push it.")
 
             if issue_state.pr is not None:
                 pr_full_after = rt.gh.view_pr(number=issue_state.pr, include_comments=True)

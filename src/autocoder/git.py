@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from ._runner import CommandError, Runner
+
+_CONFLICT_MARKER = re.compile(rb"^(?:<{7}|\|{7}|>{7})(?: |$)", re.MULTILINE)
+
+
+def _has_conflict_markers(path: Path) -> bool:
+    # A deleted file or a symlink has no marker text to check.
+    if path.is_symlink() or not path.is_file():
+        return False
+    return _CONFLICT_MARKER.search(path.read_bytes().replace(b"\r\n", b"\n")) is not None
 
 
 @dataclass(frozen=True)
@@ -122,21 +132,27 @@ class GitClient:
         res = self._runner.run(["git", "merge", "--no-edit", ref], cwd=cwd, check=False)
         if res.returncode == 0:
             return True
-        conflicted = self._runner.run(["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"], cwd=cwd, check=False)
-        if conflicted.returncode == 0:
+        if self.merge_in_progress(cwd=cwd):
             return False
         raise CommandError(result=res)
 
-    def has_unresolved_conflicts(self, *, cwd: Path) -> bool:
-        if self._git(["ls-files", "--unmerged"], cwd=cwd).strip():
-            return True
-        for args in (["diff", "--check"], ["diff", "--cached", "--check"]):
-            result = self._runner.run(["git", *args], cwd=cwd, check=False)
-            if result.returncode not in (0, 2):
-                raise CommandError(result=result)
-            if "leftover conflict marker" in result.stdout:
-                return True
-        return False
+    def merge_in_progress(self, *, cwd: Path) -> bool:
+        res = self._runner.run(["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"], cwd=cwd, check=False)
+        return res.returncode == 0
+
+    def unresolved_conflict_paths(self, *, cwd: Path) -> list[str]:
+        """
+        Return unmerged paths that are not safe to stage.
+
+        During a merge, a conflicted file counts as resolved once it has no conflict marker lines.
+        A lone `=======` line (for example a heading underline) is not a marker. Outside a merge,
+        every unmerged path is unsafe.
+        """
+        out = self._git(["diff", "--name-only", "-z", "--diff-filter=U"], cwd=cwd)
+        paths = sorted({p for p in out.split("\0") if p})
+        if not paths or not self.merge_in_progress(cwd=cwd):
+            return paths
+        return [p for p in paths if _has_conflict_markers(cwd / p)]
 
     def add_all(self, *, cwd: Path) -> None:
         self._git(["add", "-A"], cwd=cwd)

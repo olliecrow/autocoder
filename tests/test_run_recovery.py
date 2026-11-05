@@ -654,7 +654,7 @@ def test_default_branch_merge_sync_runs_once_per_default_sha(tmp_path, monkeypat
     # autocoder merges outside the sandbox before Codex runs, once for this default SHA.
     assert calls == [('default_branch_advanced',)]
     assert merges == [(worktree, 'origin/main')]
-    notices = [body for _, body in gh.issue_comments if 'could not merge `origin/main`' in body]
+    notices = [body for _, body in gh.issue_comments if '`origin/main` is not merged into the remote' in body]
     assert len(notices) == 1
     git._default_sha = 'newer-base'
     runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
@@ -744,4 +744,59 @@ def test_clean_unpublished_merge_gets_one_sync_notice(tmp_path, monkeypatch):
     for _ in range(3):
         runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
     assert len(calls) == 1
-    assert sum('The sync is not published' in body for _, body in gh.issue_comments) == 1
+    assert sum('is not merged into the remote' in body for _, body in gh.issue_comments) == 1
+
+
+def _status_comments(gh):
+    return [body for _, body in gh.issue_comments if 'update received' not in body]
+
+
+def _sync_notice_runtime(tmp_path, monkeypatch, *, remote_exists, default_sha, seen_sha, fake_codex):
+    issue = IssueDetail(1, 't', '', 'OPEN', 'now', 'trusted-user', '', ('autocoder', 'autocoder:claimed'), ())
+    branch = 'autocoder/issue-1-test'
+    gh = _GhStub(issue=issue)
+    git = _GitStub(default_sha=default_sha, branch=branch, dirty_status='')
+    git.remote_branch_exists = lambda **kw: remote_exists
+    # The local branch has the merge; origin/<branch> is behind or missing.
+    git.is_ancestor = lambda **kw: not kw['descendant'].startswith('origin/autocoder/')
+    git.merge = lambda **kw: True
+    state = RepoState(issues={1: IssueState(branch=branch, last_seen_issue_updated_at='older',
+                                            last_seen_default_branch_sha=seen_sha,
+                                            last_seen_allowed_issue_digest='d')})
+    worktree = tmp_path / 'worktree'
+    worktree.mkdir()
+    monkeypatch.setattr(runmod, 'issue_worktree_dir', lambda *args: worktree)
+    monkeypatch.setattr(runmod, '_ensure_worktree', lambda **kw: worktree)
+    monkeypatch.setattr(runmod, '_maybe_run_codex', fake_codex)
+    return issue, gh, git, state
+
+
+def test_unpushed_branch_gets_no_sync_notice(tmp_path, monkeypatch):
+    from dataclasses import replace
+    calls = []
+    issue, gh, git, state = _sync_notice_runtime(
+        tmp_path, monkeypatch, remote_exists=False, default_sha='base', seen_sha='base',
+        fake_codex=lambda **kw: calls.append(kw['trigger_reasons']))  # needs_info: nothing is pushed
+    runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    gh._issue = replace(issue, updated_at='later', comments=(IssueComment('c1', 'trusted-user', 'A', 'l', 'l', ''),))
+    runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert calls == [('issue_updated',), ('issue_updated',)]
+    assert _status_comments(gh) == []
+
+
+def test_blocked_conflict_run_posts_one_notice_per_run(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    def blocked_ready_run(**kw):  # what _maybe_run_codex does when conflict markers remain
+        kw['rt'].gh.issue_comment(number=1, body='[autocoder]\n\nPush blocked: unresolved merge conflicts')
+        kw['issue_state'].last_notice = 'default-sync:new-base'
+
+    issue, gh, git, state = _sync_notice_runtime(
+        tmp_path, monkeypatch, remote_exists=True, default_sha='new-base', seen_sha='old-base',
+        fake_codex=blocked_ready_run)
+    for _ in range(3):
+        runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert _status_comments(gh) == ['[autocoder]\n\nPush blocked: unresolved merge conflicts']
+    gh._issue = replace(issue, updated_at='later', comments=(IssueComment('c1', 'trusted-user', 'retrigger', 'l', 'l', ''),))
+    runmod._run_one_iteration(rt=_iteration_runtime(tmp_path, gh, git), state=state)
+    assert _status_comments(gh) == ['[autocoder]\n\nPush blocked: unresolved merge conflicts'] * 2

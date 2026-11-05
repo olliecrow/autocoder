@@ -84,20 +84,29 @@ def test_scan_excludes_upstream_blobs_but_keeps_conflict_resolutions(repo: Path)
     assert "from issue" not in added
 
 
-def test_conflict_guard_checks_index_and_staged_markers(repo):
+def test_conflict_guard_accepts_codex_edits_without_staging(repo):
     _commit_file(repo, "main", "f.txt", "main\n")
     _commit_file(repo, "issue", "f.txt", "issue\n")
     git = GitClient(runner=SubprocessRunner())
     assert not git.merge(cwd=repo, ref="main")
-    assert git.has_unresolved_conflicts(cwd=repo)
-    git.add_all(cwd=repo)
-    assert git.has_unresolved_conflicts(cwd=repo)
+    assert git.unresolved_conflict_paths(cwd=repo) == ["f.txt"]
+    # Sandboxed Codex edits file contents only; the index stays unmerged.
+    (repo / "f.txt").write_text("Title\n=======\nissue\nmain\n")  # a lone ======= is a heading underline
+    assert git.unresolved_conflict_paths(cwd=repo) == []
+    for leftover in ("<<<<<<< HEAD\n", ">>>>>>> main\r\n", "||||||| base\n", "<<<<<<<\n"):
+        (repo / "f.txt").write_text("issue\n" + leftover)
+        assert git.unresolved_conflict_paths(cwd=repo) == ["f.txt"], leftover
     (repo / "f.txt").write_text("resolved\n")
-    assert git.has_unresolved_conflicts(cwd=repo)  # markers remain in the index
     git.add_all(cwd=repo)
-    assert not git.has_unresolved_conflicts(cwd=repo)
-    (repo / "f.txt").write_text("<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> main\n")
-    assert git.has_unresolved_conflicts(cwd=repo)  # unstaged markers with a resolved index
+    assert git.unresolved_conflict_paths(cwd=repo) == []
+    git.commit(cwd=repo, message="merge main")
+    assert len(_git(repo, "rev-list", "--parents", "-n1", "HEAD").split()) == 3
+
+
+def test_conflict_guard_ignores_heading_underlines_outside_a_merge(repo):
+    (repo / "README.md").write_text("Install\n=======\n\nRun it.\n")
+    _git(repo, "add", "README.md")
+    assert GitClient(runner=SubprocessRunner()).unresolved_conflict_paths(cwd=repo) == []
 
 
 @pytest.mark.parametrize("location", ["filename", "message", "binary", "text"])

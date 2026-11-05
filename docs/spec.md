@@ -343,12 +343,18 @@ Required behavior:
 - if merges produce conflicts, autocoder leaves them in the worktree; codex resolves them and reports the resolution clearly in the PR/issue.
 - when merge-syncing from base branch, treat it as high risk: inspect conflicts carefully, run relevant verification after merge, and return `ready` (which pushes the merge) only when confidence is high that neither the issue branch behavior nor merged base-branch behavior regressed.
 
-Before a ready run stages or commits files, refuse unresolved index entries and
-conflict markers in staged or unstaged diffs. Leave the merge for an operator to
-resolve and stage, then wait for new author input. A clean merge followed by
-no_action or needs_info stays local. The default SHA cursor records an attempt,
-not publication: check the remote issue branch and post one sync notice per SHA
-when it is still behind. A later ready run verifies and pushes the local merge.
+Codex cannot stage, so the index stays unmerged after it edits conflicted files.
+On `ready` during a merge, autocoder reads each unmerged file. A file with a line
+that starts with `<<<<<<<`, `|||||||`, or `>>>>>>>` (followed by a space or the
+line end) blocks the run: nothing is committed or pushed, and one notice per run
+lists the files and asks for `retrigger`. A lone `=======` line does not block.
+Otherwise autocoder runs `git add -A`, requires no unmerged paths, commits the
+merge, and pushes. Outside a merge, any unmerged path blocks the run.
+
+A clean merge followed by no_action or needs_info stays local. The default SHA
+cursor records an attempt, not publication. When the remote issue branch exists
+and is still behind, post at most one sync notice per default-branch SHA. A
+branch that was never pushed gets no notice; its first push publishes the merge.
 
 ## Communication contract
 Goals:

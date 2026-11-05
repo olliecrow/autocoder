@@ -42,7 +42,10 @@ class _GitStub:
     def current_branch(self, *, cwd: Path):
         return "autocoder/issue-1-test"
 
-    def has_unresolved_conflicts(self, *, cwd: Path) -> bool:
+    def unresolved_conflict_paths(self, *, cwd: Path) -> list[str]:
+        return []
+
+    def merge_in_progress(self, *, cwd: Path) -> bool:
         return False
 
     def status_porcelain(self, *, cwd: Path) -> str:
@@ -110,7 +113,7 @@ def test_maybe_run_codex_skips_pr_create_when_branch_matches_default(tmp_path: P
     head_sha = "abc123"
 
     git = _GitStub(base_sha=base_sha, head_sha=head_sha)
-    git.has_unresolved_conflicts = lambda **kwargs: conflicted
+    git.unresolved_conflict_paths = lambda **kwargs: ["f.txt"] if conflicted else []
     gh = _GhStub()
     codex = _CodexStub(
         output=CodexOutput(
@@ -956,3 +959,89 @@ def test_ready_run_refuses_to_push_commits_that_add_a_likely_secret(tmp_path):
     rt.gh.edit_pr = lambda **kwargs: None
     _maybe_run_codex(rt=rt, issue_state=state, issue=issue, pr=None, worktree_dir=worktree, trigger_reasons=())
     assert len(git.pushed) == 1
+
+
+class _GhMergeStub(_GhStub):
+    def edit_pr(self, *, number: int, title: str | None = None, body: str | None = None) -> None:
+        return None
+
+
+class _ResolvingCodex:
+    def __init__(self, *, resolution: str) -> None:
+        self._resolution = resolution
+
+    def run_exec(self, *, workdir: Path, prompt: str, schema_path: Path, output_path: Path) -> CodexOutput:
+        # Sandboxed Codex edits the conflicted file and never stages it.
+        (workdir / "f.txt").write_text(self._resolution, encoding="utf-8")
+        return CodexOutput(decision="ready", issue_comment_markdown="merged main", pr_comment_markdown=None,
+                           pr_title="t", pr_body_markdown="b", commit_message="Merge main", tests_ran=())
+
+
+@pytest.mark.parametrize("resolution", ["issue\nmain\n", "issue\n=======\nmain\n>>>>>>> origin/main\n"])
+def test_ready_run_commits_and_pushes_codex_conflict_resolution(tmp_path: Path, monkeypatch, resolution) -> None:
+    import subprocess
+
+    from autocoder._runner import SubprocessRunner
+    from autocoder.git import GitClient, ensure_local_excludes
+
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for key in ("GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"):
+        monkeypatch.setenv(key, "test")
+    for key in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(key, "test@example.com")
+
+    def git_cmd(cwd: Path, *args: str) -> str:
+        return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
+
+    branch = "autocoder/issue-1-test"
+    origin, managed, worktree = tmp_path / "origin.git", tmp_path / "managed", tmp_path / "worktree"
+    git_cmd(tmp_path, "init", "-q", "--bare", "-b", "main", str(origin))
+    git_cmd(tmp_path, "clone", "-q", str(origin), str(managed))
+    (managed / "f.txt").write_text("base\n")
+    git_cmd(managed, "add", "-A")
+    git_cmd(managed, "commit", "-qm", "base")
+    git_cmd(managed, "push", "-q", "origin", "main")
+    git_cmd(managed, "worktree", "add", "-q", "-b", branch, str(worktree), "origin/main")
+    (worktree / "f.txt").write_text("issue\n")
+    git_cmd(worktree, "commit", "-qam", "issue change")
+    git_cmd(worktree, "push", "-q", "origin", f"HEAD:refs/heads/{branch}")
+    git_cmd(managed, "fetch", "-q", "origin")
+    (managed / "f.txt").write_text("main\n")
+    git_cmd(managed, "commit", "-qam", "main change")
+    git_cmd(managed, "push", "-q", "origin", "main")
+    git = GitClient(runner=SubprocessRunner())
+    assert git.merge(cwd=worktree, ref="origin/main") is False
+    ensure_local_excludes(repo_dir=managed, patterns=[".autocoder/"])
+    (worktree / ".autocoder" / "plan").mkdir(parents=True)
+
+    gh = _GhMergeStub()
+    rt = SimpleNamespace(
+        repo=SimpleNamespace(full_name="owner/repo"),
+        cfg=SimpleNamespace(mentions=(), allowed_github_logins=("trusted-user",)),
+        default_branch="main", managed_dir=managed, state_path=tmp_path / "state.json",
+        git=git, gh=gh, codex=_ResolvingCodex(resolution=resolution),
+    )
+    issue_state = IssueState(branch=branch, pr=7)
+    request = IssueComment("c1", "trusted-user", "sync main", "now", "now", "https://example.test/c1")
+    issue = IssueDetail(1, "t", "https://example.test/issues/1", "OPEN", "now", "trusted-user", "",
+                        ("autocoder", "autocoder:claimed"), (request,))
+    remote_before = git_cmd(origin, "rev-parse", branch)
+
+    _maybe_run_codex(rt=rt, issue_state=issue_state, issue=issue, pr=None, worktree_dir=worktree,
+                     trigger_reasons=("default_branch_advanced",))
+
+    if "=======" in resolution:  # markers left: nothing is committed or pushed
+        assert git.merge_in_progress(cwd=worktree)
+        assert git_cmd(origin, "rev-parse", branch) == remote_before
+        assert len(gh.issue_comments) == 1
+        assert "Push blocked" in gh.issue_comments[0][1] and "`f.txt`" in gh.issue_comments[0][1]
+        assert "stage" not in gh.issue_comments[0][1]
+        assert issue_state.last_notice == f"default-sync:{git_cmd(managed, 'rev-parse', 'origin/main')}"
+        return
+    head = git_cmd(worktree, "rev-parse", "HEAD")
+    assert len(git_cmd(worktree, "rev-list", "--parents", "-n1", "HEAD").split()) == 3
+    assert git_cmd(origin, "rev-parse", branch) == head
+    assert git.is_ancestor(cwd=worktree, ancestor="origin/main", descendant="HEAD")
+    assert (worktree / "f.txt").read_text() == "issue\nmain\n"
+    assert [body for _, body in gh.issue_comments if "merged main" in body]
