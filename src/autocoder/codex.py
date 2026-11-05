@@ -28,7 +28,6 @@ def _read_timeout_s() -> int:
     return v
 
 
-_CODEX_TIMEOUT_S = _read_timeout_s()
 
 
 @dataclass(frozen=True)
@@ -72,6 +71,7 @@ _OUTPUT_SCHEMA: dict[str, Any] = {
 class CodexClient:
     def __init__(self, *, runner: Runner):
         self._runner = runner
+        self._timeout_s = _read_timeout_s()
 
     def run_exec(
         self,
@@ -109,7 +109,7 @@ class CodexClient:
                 "-",
             ],
             input_text=prompt,
-            timeout_s=float(_CODEX_TIMEOUT_S),
+            timeout_s=float(self._timeout_s),
             check=True,
         )
 

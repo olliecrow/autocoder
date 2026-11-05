@@ -2206,13 +2206,21 @@ def run_session(*, repo_ssh_url: str) -> int:
     Sequential multi-issue loop (one codex run per issue worktree), polling every 1 minute.
     """
     runner = SubprocessRunner()
-    repo = parse_repo_ssh_url(repo_ssh_url)
+    try:
+        repo = parse_repo_ssh_url(repo_ssh_url)
+        cfg = load_config(global_path=global_config_path(), repo_path=repo_config_path(repo))
+        if not cfg.allowed_github_logins:
+            raise ValueError('no allowed_github_logins configured; add allowed_github_logins = ["<login>"] to ~/autocoder/config.toml')
+        codex = CodexClient(runner=runner)
+        managed_dir = managed_clone_dir(repo)
+        state_path = repo_state_dir(repo) / "state.json"
+        state = load_repo_state(state_path)
+        inst = ensure_instance_id(instance_id_path())
+    except (ValueError, OSError) as exc:
+        message = str(exc).replace(str(Path.home()), "~").replace("\n", " ")
+        print(f"autocoder: error: {message}", file=sys.stderr)
+        return 2
 
-    inst = ensure_instance_id(instance_id_path())
-    cfg = load_config(global_path=global_config_path(), repo_path=repo_config_path(repo))
-
-    managed_dir = managed_clone_dir(repo)
-    state_path = repo_state_dir(repo) / "state.json"
     lock_path = repo_state_dir(repo) / "session.lock"
 
     _log(
@@ -2248,7 +2256,6 @@ def run_session(*, repo_ssh_url: str) -> int:
     _log("session lock acquired", repo=repo.full_name, lock_path=lock_path)
     git = GitClient(runner=runner)
     gh = GhClient(runner=runner, repo=repo.full_name)
-    codex = CodexClient(runner=runner)
 
     rt = _Runtime(
         repo=repo,
@@ -2267,7 +2274,6 @@ def run_session(*, repo_ssh_url: str) -> int:
         _ensure_managed_clone(rt=rt)
         rt = replace(rt, default_branch=_discover_default_branch(rt=rt))
         _ensure_labels(rt=rt)
-        state = load_repo_state(rt.state_path)
     except BaseException:
         lock.release()
         raise

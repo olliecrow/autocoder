@@ -298,3 +298,7 @@ Enforcement:
 `AGENTS.md` requires plain English in chat and written project material. When touching code, prefer clear descriptive names for files, folders, flags, config keys, functions, classes, types, variables, tests, and examples, and rename confusing names when the change is safe and worth it.
 References:
 `AGENTS.md`
+
+## Private state and setup validation
+
+Create the autocoder home directory with mode `0700` and the instance ID with `0600`; tighten existing modes. Reject invalid repo URLs, config, timeout, state, and empty allowlists before locking or external actions. Return status 2 with a short error. Read the timeout when the client starts, so help works with an invalid timeout.
