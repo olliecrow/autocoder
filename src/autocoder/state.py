@@ -25,6 +25,8 @@ class IssueState:
     last_seen_allowed_pr_digest: str | None = None
     # Conflict paths captured before the worker runs, so a later retry still checks them.
     merge_conflict_paths: tuple[str, ...] = ()
+    # Non-conflict paths already staged at that same moment (clean merge results).
+    merge_staged_paths: tuple[str, ...] = ()
 
 
 @dataclass
@@ -107,6 +109,10 @@ def _issue_state_from_mapping(data: dict[str, object], *, field_prefix: str) -> 
         merge_conflict_paths=_path_tuple(
             data.get("merge_conflict_paths"),
             field_name=f"{field_prefix}.merge_conflict_paths",
+        ),
+        merge_staged_paths=_path_tuple(
+            data.get("merge_staged_paths"),
+            field_name=f"{field_prefix}.merge_staged_paths",
         ),
     )
 

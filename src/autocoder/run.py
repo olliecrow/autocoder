@@ -1155,7 +1155,7 @@ def _build_codex_prompt(
             "",
             "Working approach:",
             f"- 1. autocoder fetched `origin` and, when the worktree was clean, merged `origin/{rt.default_branch}` into this branch before this run. Inspect `git status` and any in-progress merge; recover interrupted work before starting new work.",
-            "- 2. If a merge is in progress, resolve every conflicted file in place and remove all conflict markers; do not stage. Markers may be longer than seven characters when `conflict-marker-size` says so, and diff3 or zdiff3 adds a `|||||||` base section. Inspect conflicts carefully and verify both inherited and issue behavior. autocoder refuses to commit a file that still has markers, including one staged during the run.",
+            "- 2. If a merge is in progress, resolve every conflicted file in place and remove all conflict markers; do not stage. Markers may be longer than seven characters when `conflict-marker-size` says so, and diff3 or zdiff3 adds a `|||||||` base section. Inspect conflicts carefully and verify both inherited and issue behavior. autocoder refuses to commit a file that still has markers, including one staged during the run. autocoder commits the resolved conflict files, tracked edits, and files the merge already staged. It does not commit other untracked or ignored files.",
             "- 3. Read the trusted context and relevant repository instructions. Establish the intended outcome, constraints, risks, and acceptance checks before choosing a method.",
             "- 4. Resolve context from code and tests. Ask only when a missing decision materially changes behavior, authority, cost, or risk.",
             "- 5. Match effort to risk: act directly on small work; use a short plan and broader checks for material work. Keep one implementation owner.",
@@ -1244,11 +1244,18 @@ def _maybe_run_codex(
     )
     # Remember conflict paths before the worker runs. Staging during the run, or on a
     # later retry, removes them from the unmerged list but does not make markers safe.
+    # The staged snapshot is the clean merge result, taken once, before the worker
+    # can add unrelated files. A retry keeps both lists.
     if rt.git.merge_in_progress(cwd=worktree_dir):
         if not issue_state.merge_conflict_paths:
-            issue_state.merge_conflict_paths = tuple(rt.git.unmerged_paths(cwd=worktree_dir))
+            conflict = tuple(rt.git.unmerged_paths(cwd=worktree_dir))
+            issue_state.merge_conflict_paths = conflict
+            issue_state.merge_staged_paths = tuple(
+                p for p in rt.git.staged_paths(cwd=worktree_dir) if p not in conflict
+            )
     else:
         issue_state.merge_conflict_paths = ()
+        issue_state.merge_staged_paths = ()
     t0 = time.time()
     try:
         out = rt.codex.run_exec(workdir=worktree_dir, prompt=prompt, schema_path=schema_path, output_path=output_path)
@@ -1500,13 +1507,21 @@ def _maybe_run_codex(
     merging = rt.git.merge_in_progress(cwd=worktree_dir)
     if merging or rt.git.status_porcelain(cwd=worktree_dir).strip():
         _log("git status dirty after codex; committing", issue=issue.number, pr=pr_number)
-        rt.git.add_all(cwd=worktree_dir)
+        if merging:
+            rt.git.stage_merge_resolution(
+                cwd=worktree_dir,
+                conflict_paths=issue_state.merge_conflict_paths,
+                already_staged=issue_state.merge_staged_paths,
+            )
+        else:
+            rt.git.add_all(cwd=worktree_dir)
         if rt.git.unresolved_conflict_paths(cwd=worktree_dir, also=issue_state.merge_conflict_paths):
             raise RuntimeError("merge still has unmerged paths after staging; restore the worktree and reply retrigger")
         msg = out.commit_message or f"issue #{issue.number}: {issue.title}"
         rt.git.commit(cwd=worktree_dir, message=redact_for_repo(msg, managed_dir=rt.managed_dir))
         if merging:
             issue_state.merge_conflict_paths = ()
+            issue_state.merge_staged_paths = ()
         _log("git commit created", issue=issue.number, pr=pr_number, commit_message=msg)
     else:
         _log("git status clean after codex; skipping commit", level="debug", issue=issue.number, pr=pr_number)

@@ -183,6 +183,61 @@ class GitClient:
     def add_all(self, *, cwd: Path) -> None:
         self._git(["add", "-A"], cwd=cwd)
 
+    def staged_paths(self, *, cwd: Path) -> list[str]:
+        out = self._git(["diff", "--cached", "--name-only", "-z"], cwd=cwd)
+        return sorted({p for p in out.split("\0") if p})
+
+    def _cached_added(self, *, cwd: Path) -> set[str]:
+        out = self._git(["diff", "--cached", "--name-only", "-z", "--diff-filter=A"], cwd=cwd)
+        return {p for p in out.split("\0") if p}
+
+    def _ignored_paths(self, *, cwd: Path, paths: Sequence[str]) -> set[str]:
+        # A force-added ignored path is in the index. `--no-index` still reports it.
+        # `-z` on this Git requires `--stdin`.
+        if not paths:
+            return set()
+        res = self._runner.run(
+            ["git", "check-ignore", "-z", "--stdin", "--no-index"],
+            cwd=cwd,
+            input_text="\0".join(paths) + "\0",
+            check=False,
+        )
+        if res.returncode not in (0, 1):
+            raise CommandError(result=res)
+        return {p for p in res.stdout.split("\0") if p}
+
+    def _unwanted_merge_staged(self, *, cwd: Path, allowed: set[str]) -> list[str]:
+        added = self._cached_added(cwd=cwd)
+        ignored = self._ignored_paths(cwd=cwd, paths=self.staged_paths(cwd=cwd))
+        return sorted((added - allowed) | ignored)
+
+    def stage_merge_resolution(
+        self,
+        *,
+        cwd: Path,
+        conflict_paths: Sequence[str],
+        already_staged: Sequence[str],
+    ) -> None:
+        """
+        Stage a resolved merge without publishing unrelated untracked files.
+
+        Conflict paths and tracked edits are staged. Paths already staged when the
+        conflict was recorded stay staged, including a new file from the other branch.
+        Any other addition, and any ignored path, is removed from the index.
+        """
+        if conflict_paths:
+            self._git(["add", "--", *conflict_paths], cwd=cwd)
+        self._git(["add", "-u"], cwd=cwd)
+        allowed = set(conflict_paths) | set(already_staged)
+        extras = self._unwanted_merge_staged(cwd=cwd, allowed=allowed)
+        if extras:
+            self._git(["restore", "--staged", "--", *extras], cwd=cwd)
+        if self._unwanted_merge_staged(cwd=cwd, allowed=allowed):
+            raise RuntimeError(
+                "merge staging left paths that are not part of the resolution; "
+                "restore the worktree and reply retrigger"
+            )
+
     def commit(self, *, cwd: Path, message: str) -> None:
         self._git(["commit", "-m", message], cwd=cwd)
 

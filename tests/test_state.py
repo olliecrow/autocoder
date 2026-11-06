@@ -37,6 +37,17 @@ def test_state_roundtrip(tmp_path: Path) -> None:
     assert loaded == s
 
 
+def test_state_loads_missing_merge_path_fields(tmp_path: Path) -> None:
+    path = tmp_path / "state.json"
+    path.write_text(
+        '{"issues": {"1": {"branch": "autocoder/issue-1-test"}}}\n',
+        encoding="utf-8",
+    )
+    loaded = load_repo_state(path)
+    assert loaded.issues[1].merge_conflict_paths == ()
+    assert loaded.issues[1].merge_staged_paths == ()
+
+
 def test_state_missing_file_defaults(tmp_path: Path) -> None:
     p = tmp_path / "missing.json"
     loaded = load_repo_state(p)

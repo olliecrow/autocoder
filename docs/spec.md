@@ -351,10 +351,15 @@ A shorter configured size is honored, and any longer run still counts, so a wide
 marker cannot be committed. diff3 and zdiff3 base sections (`|||||||`) count.
 A line of only `=` characters does not. Nothing is committed or pushed, and one
 notice per run lists the files and asks for `retrigger`.
-Otherwise autocoder runs `git add -A`, requires no unmerged paths, commits the
-merge, and pushes. A conflict without marker text (binary or modify/delete) counts
-as resolved by the file state Codex leaves. Outside a merge, any unmerged path
-blocks the run.
+When the check passes, autocoder stages those conflicted paths and runs
+`git add -u` for tracked edits. Paths the merge had already staged stay staged,
+including a new file from the other branch. Any other new path, and any ignored
+path, is taken out of the index. autocoder scans the index and does not commit
+if one of those paths is still staged. It then requires no unmerged paths,
+commits the merge, and pushes. A dirty worktree that is not in a merge still
+uses `git add -A`. A conflict without marker text (binary or modify/delete)
+counts as resolved by the file state Codex leaves. Outside a merge, any
+unmerged path blocks the run.
 
 A clean merge followed by no_action or needs_info stays local. The default SHA
 cursor records an attempt, not publication. When the remote issue branch exists
