@@ -208,15 +208,16 @@ class GitClient:
         Conflict paths and tracked edits are staged. Paths already staged when the
         conflict was recorded stay staged, including a new file from the other branch.
         Only additions outside that snapshot and the conflict paths are removed.
-        Ignore rules never remove tracked merge content.
+        Ignore rules never remove tracked merge content. Path arguments are literal,
+        so a file named `*.txt` is that one file.
         """
         if conflict_paths:
-            self._git(["add", "--", *conflict_paths], cwd=cwd)
+            self._git(["--literal-pathspecs", "add", "--", *conflict_paths], cwd=cwd)
         self._git(["add", "-u"], cwd=cwd)
         allowed = set(conflict_paths) | set(already_staged)
         extras = self._unwanted_merge_staged(cwd=cwd, allowed=allowed)
         if extras:
-            self._git(["restore", "--staged", "--", *extras], cwd=cwd)
+            self._git(["--literal-pathspecs", "restore", "--staged", "--", *extras], cwd=cwd)
         if self._unwanted_merge_staged(cwd=cwd, allowed=allowed):
             raise RuntimeError(
                 "merge staging left paths that are not part of the resolution; "

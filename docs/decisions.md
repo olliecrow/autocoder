@@ -192,7 +192,7 @@ One owner for Git writes works the same in both sandbox modes, and keeps the pus
 Trade-offs:
 Codex cannot make several checkpoint commits in one run; autocoder makes one commit per `ready` run.
 Enforcement:
-Before each run, autocoder merges `origin/<default-branch>` into a clean worktree (`git merge --no-edit`; conflicts and `MERGE_HEAD` stay for Codex). The prompt forbids Git writes. After `ready` during a merge, autocoder stages the original conflict paths and tracked edits (`git add -u`), keeps paths the merge had already staged, drops other new paths, keeps tracked merge content even when it matches ignore rules, scans the index, then commits and pushes. A dirty worktree that is not in a merge still uses `git add -A`.
+Before each run, autocoder merges `origin/<default-branch>` into a clean worktree (`git merge --no-edit`; conflicts and `MERGE_HEAD` stay for Codex). The prompt forbids Git writes. After `ready` during a merge, autocoder stages the original conflict paths and tracked edits (`git add -u`), keeps paths the merge had already staged, drops other new paths, and passes those path arguments as literal names. It keeps tracked merge content even when it matches ignore rules, scans the index, then commits and pushes. A dirty worktree that is not in a merge still uses `git add -A`.
 References:
 `src/autocoder/run.py`, `tests/test_run_prompt.py`, `docs/spec.md`
 

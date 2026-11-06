@@ -181,3 +181,35 @@ def test_outgoing_scan_fails_on_git_error(repo):
     from autocoder._runner import CommandError
     with pytest.raises(CommandError):
         list(GitClient(runner=SubprocessRunner()).outgoing_scan_text(cwd=repo, exclude_refs=["missing-ref"]))
+
+
+@pytest.mark.parametrize("name", ["*.txt", "[ab].txt"])
+def test_merge_staging_treats_glob_names_as_literal_paths(repo, name):
+    (repo / "a.txt").write_text("a\n", encoding="utf-8")
+    (repo / "keep.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "a.txt", "keep.txt")
+    _git(repo, "commit", "-qm", "base files")
+    _git(repo, "branch", "-f", "issue")
+    _commit_file(repo, "main", "f.txt", "main\n")
+    _commit_file(repo, "main", "a.txt", "a-main\n")
+    _commit_file(repo, "main", "keep.txt", "main\n")
+    _git(repo, "checkout", "-q", "issue")
+    (repo / "f.txt").write_text("issue\n", encoding="utf-8")
+    _git(repo, "commit", "-qam", "issue change")
+    git = GitClient(runner=SubprocessRunner())
+    assert git.merge(cwd=repo, ref="main") is False
+    conflict = git.unmerged_paths(cwd=repo)
+    already = [path for path in git.staged_paths(cwd=repo) if path not in set(conflict)]
+    (repo / "f.txt").write_text("resolved\n", encoding="utf-8")
+    (repo / name).write_text("junk\n", encoding="utf-8")
+    _git(repo, "add", "--", f":(literal){name}")
+    git.stage_merge_resolution(cwd=repo, conflict_paths=conflict, already_staged=already)
+    git.commit(cwd=repo, message="merge main")
+    assert _git(repo, "show", "HEAD:f.txt") == "resolved\n"
+    assert _git(repo, "show", "HEAD:a.txt") == "a-main\n"
+    assert _git(repo, "show", "HEAD:keep.txt") == "main\n"
+    assert name not in _git(repo, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
+    assert (repo / "f.txt").read_text(encoding="utf-8") == "resolved\n"
+    assert (repo / name).read_text(encoding="utf-8") == "junk\n"
+    assert _git(repo, "status", "--porcelain=v1", "-uall").splitlines() == [f"?? {name}"]
+    assert len(_git(repo, "rev-list", "--parents", "-n1", "HEAD").split()) == 3
