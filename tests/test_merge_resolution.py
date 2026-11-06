@@ -149,7 +149,8 @@ class _NoisyCodex:
         )
 
 
-def test_ready_merge_does_not_publish_unrelated_untracked_files(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("ignore_source", ["gitignore", "local", "global"])
+def test_ready_merge_does_not_publish_unrelated_untracked_files(tmp_path: Path, monkeypatch, ignore_source) -> None:
     _git_identity(monkeypatch)
     branch = "autocoder/issue-1-test"
     origin, managed, worktree = tmp_path / "origin.git", tmp_path / "managed", tmp_path / "worktree"
@@ -158,9 +159,21 @@ def test_ready_merge_does_not_publish_unrelated_untracked_files(tmp_path: Path, 
     (managed / "f.txt").write_text("base\n", encoding="utf-8")
     (managed / "other.txt").write_text("other\n", encoding="utf-8")
     (managed / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+    (managed / "notes.log").write_text("base\n")
     (managed / ".gitignore").write_text("build/\n", encoding="utf-8")
     _git(managed, "add", "-A")
     _git(managed, "commit", "-qm", "base")
+    patterns = "f.txt\nnotes.log\ndist/\n"
+    if ignore_source == "gitignore":
+        with (managed / ".gitignore").open("a") as stream:
+            stream.write(patterns)
+        _git(managed, "commit", "-qam", "ignore tracked paths")
+    elif ignore_source == "local":
+        (managed / ".git" / "info" / "exclude").write_text(patterns)
+    else:
+        excludes = tmp_path / "global-ignore"
+        excludes.write_text(patterns)
+        _git(managed, "config", "core.excludesFile", str(excludes))
     _git(managed, "push", "-q", "origin", "main")
     _git(managed, "worktree", "add", "-q", "-b", branch, str(worktree), "origin/main")
     (worktree / "f.txt").write_text("issue\n", encoding="utf-8")
@@ -170,6 +183,10 @@ def test_ready_merge_does_not_publish_unrelated_untracked_files(tmp_path: Path, 
     (managed / "f.txt").write_text("main\n", encoding="utf-8")
     (managed / "other.txt").write_text("other-main\n", encoding="utf-8")
     (managed / "from-main.txt").write_text("from-main\n", encoding="utf-8")
+    (managed / "notes.log").write_text("from-main\n")
+    (managed / "dist").mkdir()
+    (managed / "dist" / "app.js").write_text("from-main\n")
+    _git(managed, "add", "-f", "dist/app.js")
     _git(managed, "add", "-A")
     _git(managed, "commit", "-qm", "main change")
     _git(managed, "push", "-q", "origin", "main")
@@ -190,6 +207,9 @@ def test_ready_merge_does_not_publish_unrelated_untracked_files(tmp_path: Path, 
     assert "build-output.txt" not in names
     assert "credentials.json" not in names
     assert "build/out.txt" not in names
+    assert _git(origin, "show", f"{branch}:f.txt") == "resolved"
+    assert _git(origin, "show", f"{branch}:notes.log") == "from-main"
+    assert _git(origin, "show", f"{branch}:dist/app.js") == "from-main"
     assert (worktree / "f.txt").read_text(encoding="utf-8") == "resolved\n"
     assert (worktree / "tracked.txt").read_text(encoding="utf-8") == "tracked-edit\n"
     assert (worktree / "other.txt").read_text(encoding="utf-8") == "other-main\n"

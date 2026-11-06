@@ -191,25 +191,9 @@ class GitClient:
         out = self._git(["diff", "--cached", "--name-only", "-z", "--diff-filter=A"], cwd=cwd)
         return {p for p in out.split("\0") if p}
 
-    def _ignored_paths(self, *, cwd: Path, paths: Sequence[str]) -> set[str]:
-        # A force-added ignored path is in the index. `--no-index` still reports it.
-        # `-z` on this Git requires `--stdin`.
-        if not paths:
-            return set()
-        res = self._runner.run(
-            ["git", "check-ignore", "-z", "--stdin", "--no-index"],
-            cwd=cwd,
-            input_text="\0".join(paths) + "\0",
-            check=False,
-        )
-        if res.returncode not in (0, 1):
-            raise CommandError(result=res)
-        return {p for p in res.stdout.split("\0") if p}
-
     def _unwanted_merge_staged(self, *, cwd: Path, allowed: set[str]) -> list[str]:
         added = self._cached_added(cwd=cwd)
-        ignored = self._ignored_paths(cwd=cwd, paths=self.staged_paths(cwd=cwd))
-        return sorted((added - allowed) | ignored)
+        return sorted(added - allowed)
 
     def stage_merge_resolution(
         self,
@@ -223,7 +207,8 @@ class GitClient:
 
         Conflict paths and tracked edits are staged. Paths already staged when the
         conflict was recorded stay staged, including a new file from the other branch.
-        Any other addition, and any ignored path, is removed from the index.
+        Only additions outside that snapshot and the conflict paths are removed.
+        Ignore rules never remove tracked merge content.
         """
         if conflict_paths:
             self._git(["add", "--", *conflict_paths], cwd=cwd)
