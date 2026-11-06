@@ -3,15 +3,33 @@ title = "autocoder gitleaks policy"
 [extend]
 useDefault = true
 
+# The leading slash stays outside the capture. Gitleaks' default allowlist hides
+# secrets that start with /home/, so the secret is home/<name> or Users/<name>.
 [[rules]]
 id = "local-system-paths"
 description = "Do not commit local absolute system paths in this public-ready repository."
-regex = '''(/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+|[A-Za-z]:[\\/]+Users[\\/]+[A-Za-z0-9._-]+)'''
+regex = '''/((?:home|Users)/[A-Za-z0-9._-]+)'''
+secretGroup = 1
 tags = ["policy", "privacy"]
 
 [[rules.allowlists]]
 description = "Allow explicit placeholder examples used in policy/docs."
 regexTarget = "secret"
 regexes = [
-  '''^(/Users/(YOU|USER|username)|/home/(user|USER|username)|[A-Za-z]:[\\/]+Users[\\/]+(YOU|USER|USERNAME|username))$'''
+  '''^(?:home/(?:user|USER|username)|Users/(?:YOU|USER|username))$'''
+]
+
+# Windows paths have no leading slash to drop. One capture keeps secretGroup = 1.
+[[rules]]
+id = "local-windows-paths"
+description = "Do not commit local Windows user paths in this public-ready repository."
+regex = '''([A-Za-z]:[\\/]+Users[\\/]+[A-Za-z0-9._-]+)'''
+secretGroup = 1
+tags = ["policy", "privacy"]
+
+[[rules.allowlists]]
+description = "Allow explicit Windows placeholder examples used in policy/docs."
+regexTarget = "secret"
+regexes = [
+  '''^[A-Za-z]:[\\/]+Users[\\/]+(?:YOU|USER|USERNAME|username)$'''
 ]

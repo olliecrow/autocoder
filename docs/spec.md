@@ -432,8 +432,10 @@ added file lines, including merge changes against the first parent. Binary and
 `-diff` files are scanned as text. Invalid ranges and scan errors fail the check.
 A missing, zero, or unknown push base (and the weekly run) scans all history
 reachable from the tip; the pre-push hook does the same for a new branch.
-The path checker checks each match independently; gitleaks defaults alone do
-not cover all home paths.
+The path checker checks each match independently. The gitleaks home-path rule
+reports `home/<name>` and `Users/<name>` without the leading slash, so the
+default allowlist does not hide them. Placeholder names stay allowed. Windows
+paths use a separate rule.
 
 ## Execution isolation default
 

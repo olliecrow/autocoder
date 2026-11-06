@@ -162,9 +162,16 @@ def test_ci_gitleaks_scans_binary_and_diff_disabled_files(repo, hide, tmp_path):
 def test_gitleaks_path_allowlist_is_per_secret_and_anchored(tmp_path):
     import tomllib
     config = tomllib.loads((ROOT / ".gitleaks.toml").read_text())
-    allow = config["rules"][0]["allowlists"][0]
-    assert allow["regexTarget"] == "secret"
-    assert all(pattern.startswith("^") and pattern.endswith("$") for pattern in allow["regexes"])
+    rules = {rule["id"]: rule for rule in config["rules"]}
+    assert set(rules) == {"local-system-paths", "local-windows-paths"}
+    unix = rules["local-system-paths"]
+    assert unix["secretGroup"] == 1
+    assert unix["regex"].startswith("/(")
+    for rule in rules.values():
+        assert rule["secretGroup"] == 1
+        allow = rule["allowlists"][0]
+        assert allow["regexTarget"] == "secret"
+        assert all(pattern.startswith("^") and pattern.endswith("$") for pattern in allow["regexes"])
     scanner = shutil.which("gitleaks")
     if scanner is None:
         pytest.skip("gitleaks is checked in security CI")
@@ -172,6 +179,29 @@ def test_gitleaks_path_allowlist_is_per_secret_and_anchored(tmp_path):
     result = subprocess.run([scanner, "dir", "--redact", "--no-banner", "--config",
                              str(ROOT / ".gitleaks.toml"), str(tmp_path)], capture_output=True)
     assert result.returncode == 1
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("/home/" + "someone/project", 1),
+    ("/Users/" + "someone/project", 1),
+    ("C:" + "\\Users\\someone\\project", 1),
+    ("C:" + "/Users/" + "someone/project", 1),
+    ("/home/" + "user/project", 0),
+    ("/Users/" + "YOU/project", 0),
+    ("C:" + "\\Users\\YOU\\project", 0),
+    ("/home/" + "userbob/project", 1),
+    ("/Users/" + "YOUNG/project", 1),
+    ("/home/" + "user /home/" + "someone/project", 1),
+    ("prefix /home/" + "someone", 1),
+])
+def test_gitleaks_reports_real_local_paths_and_allows_placeholders(tmp_path, text, expected):
+    scanner = shutil.which("gitleaks")
+    if scanner is None:
+        pytest.skip("gitleaks is checked in security CI")
+    (tmp_path / "bad.txt").write_text(text + "\n", encoding="utf-8")
+    result = subprocess.run([scanner, "dir", "--redact", "--no-banner", "--config",
+                             str(ROOT / ".gitleaks.toml"), str(tmp_path)], capture_output=True)
+    assert result.returncode == expected
 
 
 def test_scanner_command_failure_is_not_clean(tmp_path, monkeypatch):
