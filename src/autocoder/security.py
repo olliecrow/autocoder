@@ -138,7 +138,8 @@ def pr_allowed_human_activity_digest(
 # redaction then removes the rest of the text, so a truncated key body never leaks.
 _SECRET_PATTERN = re.compile(
     r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"
-    r"|AKIA[0-9A-Z]{16}|(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}"
+    r"|AKIA[0-9A-Z]{16}|(?<![A-Za-z0-9])sk-(?![a-z]+(?:-[a-z]+)+(?![A-Za-z0-9_-]))[A-Za-z0-9_-]{20,}"
+    r"|xox[abprs]-[A-Za-z0-9-]{10,}"
     r"|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"  # JWT
     r"|AIza[0-9A-Za-z_-]{35}|glpat-[0-9A-Za-z_-]{20,}|(?:sk|rk)_live_[0-9A-Za-z]{20,}"
     r"|(?<![A-Za-z0-9_])npm_[A-Za-z0-9]{36}|pypi-AgEIcHlwaS5vcmc[0-9A-Za-z_-]{50,}"
@@ -148,8 +149,13 @@ _SECRET_PATTERN = re.compile(
 )
 
 
+def _all_letters(value: str) -> bool:
+    return re.fullmatch(r"[A-Za-z]+", value) is not None
+
+
 def redact_secrets(text: str, *, extra_values: Iterable[str] = ()) -> str:
-    values = sorted({v for v in extra_values if len(v) >= 8}, key=len, reverse=True)
+    # An all-letter value is an ordinary word. Hyphenated and mixed values still redact.
+    values = sorted({v for v in extra_values if len(v) >= 8 and not _all_letters(v)}, key=len, reverse=True)
     for value in values:
         text = text.replace(value, "[redacted]")
     return _SECRET_PATTERN.sub("[redacted]", text)
@@ -157,9 +163,15 @@ def redact_secrets(text: str, *, extra_values: Iterable[str] = ()) -> str:
 
 def _secret_named(name: str) -> bool:
     # Match whole name parts, so OPENAI_API_KEY and PGPASSWORD count but KEYBOARD and BYPASS do not.
-    parts = re.split(r"[^A-Z0-9]+", name.upper())
-    return any(part in ("KEY", "APIKEY", "PASS") or part.endswith(("TOKEN", "SECRET", "PASSWORD", "PASSWD"))
-               for part in parts)
+    # CACHE_KEY is a cache identifier. CACHE_TOKEN and SIGNING_KEY stay secret.
+    parts = [part for part in re.split(r"[^A-Z0-9]+", name.upper()) if part]
+    secret_parts = [part for part in parts
+                    if part in ("KEY", "APIKEY", "PASS") or part.endswith(("TOKEN", "SECRET", "PASSWORD", "PASSWD"))]
+    if not secret_parts:
+        return False
+    if "CACHE" in parts and all(part == "KEY" for part in secret_parts):
+        return False
+    return True
 
 
 def _env_file_assignments(managed_dir: Path | None) -> list[tuple[str, str]]:
@@ -187,5 +199,5 @@ def contains_likely_secret(text: str, *, managed_dir: Path | None = None) -> boo
     Encoded or transformed values are not detected.
     """
     values = [value for name, value in [*os.environ.items(), *_env_file_assignments(managed_dir)]
-              if _secret_named(name) and len(value) >= 8]
+              if _secret_named(name) and len(value) >= 8 and not _all_letters(value)]
     return bool(_SECRET_PATTERN.search(text)) or any(value in text for value in values)

@@ -344,10 +344,32 @@ def test_ordinary_identifiers_are_not_tokens(text):
     ("OPENAI_API_KEY", True), ("AWS_SECRET_ACCESS_KEY", True), ("GH_TOKEN", True), ("PGPASSWORD", True),
     ("DB_PASS", True), ("APIKEY", True), ("MYSQL_PASSWD", True),
     ("KEYBOARD_LAYOUT", False), ("MONKEY_PATH", False), ("BYPASS_PROXY", False), ("COMPASS_DIR", False),
+    ("CACHE_KEY", False), ("CACHE_TOKEN", True), ("SIGNING_KEY", True), ("API_KEY", True),
 ])
 def test_secret_names_match_whole_name_parts(name, secret):
     from autocoder.security import _secret_named
     assert _secret_named(name) is secret
+
+
+def test_cache_key_and_all_letter_values_do_not_block_ordinary_text(monkeypatch):
+    from autocoder.security import contains_likely_secret, redact_for_repo
+    monkeypatch.setenv("CACHE_KEY", "development")
+    monkeypatch.setenv("API_KEY", "development")
+    assert not contains_likely_secret('mode = "development"')
+    assert redact_for_repo('mode = "development"') == 'mode = "development"'
+    monkeypatch.setenv("CACHE_TOKEN", "example-" + "credential-value")
+    assert contains_likely_secret("example-" + "credential-value")
+    assert "[redacted]" in redact_for_repo("example-" + "credential-value")
+
+
+def test_lowercase_hyphenated_sk_identifier_is_not_a_token():
+    from autocoder.security import contains_likely_secret, redact_secrets
+    ordinary = "sk-" + "projection-matrix-helper"
+    assert not contains_likely_secret(ordinary)
+    assert redact_secrets(ordinary) == ordinary
+    assert contains_likely_secret("sk-" + "x" * 25)
+    assert contains_likely_secret("sk-proj-" + "A1" * 10)
+    assert contains_likely_secret("sk-ant-api03-" + "aA1" * 8)
 
 
 def test_redact_managed_env_and_secret_environment(tmp_path, monkeypatch):
