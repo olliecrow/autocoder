@@ -36,6 +36,27 @@ def test_missing_policy_input_fails(tmp_path):
     assert scan(tmp_path / "absent").returncode != 0
 
 
+@pytest.mark.parametrize("text,blocked", [
+    ("sk-ant-oat01-" + "a" * 20, True),
+    ("sk-ant-api03-" + "b" * 20, True),
+    ("sk-proj-" + "c" * 20, True),
+    ("eyJ" + "a" * 10 + ".eyJ" + "b" * 10 + "." + "c" * 10, True),
+    ("ghp_" + "a" * 20, True),
+    ("gho_" + "a" * 20, True),
+    ("ghu_" + "a" * 20, True),
+    ("ghs_" + "a" * 20, True),
+    ("ghr_" + "a" * 20, True),
+    ("github_pat_" + "a" * 20, True),
+    ("sk-projection-matrix-helper", False),
+    ("eyJ" + "abc.eyJ" + "abc.abc", False),
+    ("sk-" + "a" * 19, False),
+])
+def test_shell_policy_matches_provider_tokens_and_not_ordinary_identifiers(tmp_path, text, blocked):
+    target = tmp_path / "input"
+    target.write_text("value " + text + "\n", encoding="utf-8")
+    assert (scan(target).returncode != 0) is blocked
+
+
 def setup_scripts(repo):
     shutil.copytree(ROOT / "scripts", repo / "scripts")
     return repo / "scripts/security/check-push-range.sh"
