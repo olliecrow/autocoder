@@ -185,12 +185,13 @@ def test_ci_gitleaks_scans_binary_and_diff_disabled_files(repo, hide, tmp_path):
     assert b"leaks found" in result.stdout + result.stderr
 
 
-def test_ci_rejects_gitleaks_error_log_with_zero_commits(repo, tmp_path):
+@pytest.mark.parametrize("level", ["ERR", "FTL"])
+def test_ci_rejects_gitleaks_error_log_with_zero_commits(repo, tmp_path, level):
     setup_scripts(repo)
     tip = _git(repo, "rev-parse", "HEAD").strip()
     result, _args = run_ci_range(
         repo, tmp_path, event="push", before="0" * 40, tip=tip,
-        report="ERR simulated git scan failure\nINF 0 commits scanned.",
+        report=f"{level} simulated git scan failure\nINF 0 commits scanned.",
         scanner="exit 0",
     )
     assert result.returncode != 0
@@ -227,6 +228,56 @@ def test_ci_empty_range_accepts_zero_scanned_commits(repo, tmp_path):
         report="INF 0 commits scanned.",
     )
     assert result.returncode == 0
+
+
+@pytest.mark.parametrize("change", ["delete", "rename", "mode", "empty"])
+@pytest.mark.parametrize("real_scanner", [False, True])
+def test_ci_accepts_zero_scanned_commits_without_added_lines(repo, tmp_path, change, real_scanner):
+    setup_scripts(repo)
+    shutil.copy(ROOT / ".gitleaks.toml", repo / ".gitleaks.toml")
+    base = _git(repo, "rev-parse", "HEAD").strip()
+    if change == "delete":
+        (repo / "f.txt").unlink()
+        _git(repo, "add", "-u")
+    elif change == "rename":
+        (repo / "f.txt").rename(repo / "renamed.txt")
+        _git(repo, "add", "f.txt", "renamed.txt")
+    elif change == "mode":
+        _git(repo, "update-index", "--chmod=+x", "f.txt")
+    _git(repo, "commit", "--allow-empty", "-qm", "no added lines")
+    tip = _git(repo, "rev-parse", "HEAD").strip()
+    scanner = None
+    if real_scanner:
+        scanner = shutil.which("gitleaks")
+        if scanner is None:
+            pytest.skip("gitleaks is checked in security CI")
+        scanner = f'exec "{scanner}" "$@"'
+    result, _ = run_ci_range(
+        repo, tmp_path, event="push", before=base, tip=tip, scanner=scanner,
+        report="" if real_scanner else "INF 0 commits scanned.\nINF no leaks found",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert b"0 commits scanned" in result.stdout
+
+
+@pytest.mark.parametrize("change", ["text", "nul", "diffattr", "later_deleted"])
+def test_ci_rejects_zero_scanned_commits_when_range_adds_lines(repo, tmp_path, change):
+    setup_scripts(repo)
+    base = _git(repo, "rev-parse", "HEAD").strip()
+    (repo / "new.txt").write_bytes(b"added\n" + (b"\x00" if change == "nul" else b""))
+    if change == "diffattr":
+        (repo / ".gitattributes").write_text("new.txt -diff\n")
+        _git(repo, "add", ".gitattributes")
+    _git(repo, "add", "new.txt")
+    _git(repo, "commit", "-qm", "addition")
+    if change == "later_deleted":
+        (repo / "new.txt").unlink()
+        _git(repo, "add", "-u")
+        _git(repo, "commit", "-qm", "deletion")
+    tip = _git(repo, "rev-parse", "HEAD").strip()
+    result, _ = run_ci_range(repo, tmp_path, event="push", before=base, tip=tip,
+                             report="INF 0 commits scanned.\nINF no leaks found")
+    assert result.returncode != 0
 
 
 def test_gitleaks_path_allowlist_is_per_secret_and_anchored(tmp_path):

@@ -27,7 +27,7 @@ git rev-list "$range" >/dev/null
 log_file="$(mktemp)"
 trap 'rm -- "$log_file"' EXIT
 status=0
-gitleaks git --redact --no-banner --no-color --config .gitleaks.toml \
+gitleaks git --verbose --redact --no-banner --no-color --config .gitleaks.toml \
   --log-opts="--text --no-ext-diff --no-textconv --diff-merges=first-parent ${range}" \
   >"$log_file" 2>&1 || status=$?
 cat "$log_file"
@@ -38,10 +38,19 @@ if grep -qE '(^|[[:space:]])(ERR|FTL)[[:space:]]' "$log_file"; then
   echo "gitleaks logged an error" >&2
   exit 2
 fi
-# A range with no commits (for example sha..sha) may report zero. A range that
-# contains commits must show a non-zero scanned count.
-if [[ -n "$(git rev-list -n 1 "$range")" ]] && ! grep -qE '[1-9][0-9]* commits? scanned' "$log_file"; then
-  echo "gitleaks scanned no commits in a non-empty range" >&2
-  exit 2
+# Gitleaks reports zero for deletion-only, rename-only, mode-only, and empty
+# commits. Require a non-zero count only if some commit in the range adds lines.
+if ! grep -qE '[1-9][0-9]* commits? scanned' "$log_file"; then
+  has_additions="$(git log --text --no-ext-diff --no-textconv --diff-merges=first-parent \
+    --format= --patch "$range" | awk '
+      /^diff --git / { in_hunk=0 }
+      /^@@ / { in_hunk=1; next }
+      in_hunk && /^\+/ { found=1 }
+      END { print found+0 }
+    ')"
+  if [[ "$has_additions" == 1 ]]; then
+    echo "gitleaks scanned no commits in a range with added lines" >&2
+    exit 2
+  fi
 fi
 bash scripts/security/check-push-range.sh --from "$base" --to "$tip"

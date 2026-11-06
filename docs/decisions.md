@@ -321,6 +321,12 @@ Redact known token and private-key formats in every GitHub title, body, and comm
 
 Scan outgoing added lines before each push and block likely secrets. Committed files were not checked before, and Codex can read every file the host user can read. The scan skips merged-in default-branch history so upstream test fixtures do not block a push. It is defense in depth; a dedicated OS user is the main control.
 
+Security CI rejects every gitleaks error log. A zero scanned count fails only
+when a commit in the range adds lines: gitleaks legitimately reports zero for
+file deletions, pure renames, mode changes, and empty commits. Check each commit
+patch as text, because a net diff can hide later-deleted additions and numstat
+can still report binary files without line counts.
+
 ## Execution isolation default
 
 Default to `codex_sandbox = "workspace-write"`. Keep unrestricted execution as an explicit `danger-full-access` opt-in for isolated workers. This changes earlier behavior: sandboxed tasks can fail when they need network or external filesystem access. autocoder performs its own commit and push outside the sandbox. Use a single-repo fine-grained GitHub token, a repo deploy key, and default-branch protection. Trust repo writers and allowlisted issue authors at code-execution level. No live Codex run was used to validate sandbox-dependent task capabilities.
