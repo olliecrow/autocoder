@@ -416,7 +416,7 @@ Fetch only GitHub attachment paths and image hosts. Raw content must belong to t
 
 ## Redact outgoing text
 
-Redact known token formats (GitHub, AWS, OpenAI/Anthropic-style `sk-`, Slack tokens and webhooks, JWT, Google API, GitLab, Stripe live, npm, PyPI, Hugging Face) and private keys (a `BEGIN ... PRIVATE KEY` header alone is enough) in every GitHub title, body, and comment. A lowercase hyphenated `sk-` identifier is not a token. Also redact exact values of at least eight characters from secret-named environment variables (a `_`-separated name part is `KEY`, `APIKEY`, or `PASS`, or ends with `TOKEN`, `SECRET`, `PASSWORD`, or `PASSWD`) and all assignments in the managed clone `.env`. A name with a `CACHE` part whose only secret-shaped part is `KEY` is not secret. An all-letter value is not an exact secret. Apply the same filter to generated commit messages. Redaction is defense in depth; never give the worker unrelated credentials.
+Redact known token formats (GitHub, AWS, OpenAI/Anthropic-style `sk-`, Slack tokens and webhooks, JWT, Google API, GitLab, Stripe live, npm, PyPI, Hugging Face) and private keys (a `BEGIN ... PRIVATE KEY` header alone is enough) in every GitHub title, body, and comment. A lowercase hyphenated `sk-` identifier is not a token. A known token matches only at the start of the text or after a character other than a letter, digit, `_`, or `-`. Also redact exact values of at least eight characters from secret-named environment variables (a `_`-separated name part is `KEY`, `APIKEY`, or `PASS`, or ends with `TOKEN`, `SECRET`, `PASSWORD`, or `PASSWD`) and all assignments in the managed clone `.env`. A name with a `CACHE` part whose only secret-shaped part is `KEY` is not secret. An all-letter value is not an exact secret. Apply the same filter to generated commit messages. Redaction is defense in depth; never give the worker unrelated credentials.
 
 Before each push, scan outgoing commit messages, filenames, and new blob contents
 (`HEAD --not origin/<default-branch> origin/<branch>`). Block known token formats
@@ -437,7 +437,8 @@ A missing, zero, or unknown push base (and the weekly run) scans all history
 reachable from the tip; the pre-push hook does the same for a new branch.
 The shell text policy matches GitHub token prefixes, Anthropic `sk-ant-oat01-`
 and `sk-ant-api03-` keys, OpenAI `sk-proj-` keys, generic `sk-` tokens, and
-JWTs. The path checker checks each match independently. The gitleaks home-path rule
+JWTs. Each shape needs the same left boundary, so `task-<sha>`, `mask-<id>`,
+and `risk-proj-<name>` stay ordinary text. The path checker checks each match independently. The gitleaks home-path rule
 reports `home/<name>` and `Users/<name>` without the leading slash, so the
 default allowlist does not hide them. Placeholder names stay allowed. Windows
 paths use a separate rule.

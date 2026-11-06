@@ -57,6 +57,47 @@ def test_shell_policy_matches_provider_tokens_and_not_ordinary_identifiers(tmp_p
     assert (scan(target).returncode != 0) is blocked
 
 
+# Built at runtime so this file does not contain a contiguous token.
+_BOUNDARY_LINES = {
+    "task-sha": ("task-" + "ab" * 20, False),
+    "mask-hash": ("mask-" + "a1b2c3d4" + "e5f6g7h8" + "i9j0k1", False),
+    "risk-proj": ("risk-" + "proj-management-dashboard-v2", False),
+    "line-sk": ("sk-" + "a" * 20, True),
+    "line-sk-proj": ("sk-proj-" + "c" * 20, True),
+    "line-sk-ant-oat": ("sk-ant-oat01-" + "a" * 20, True),
+    "line-sk-ant-api": ("sk-ant-api03-" + "b" * 20, True),
+    "line-jwt": ("eyJ" + "a" * 10 + ".eyJ" + "b" * 10 + "." + "c" * 10, True),
+    "line-ghp": ("ghp_" + "a" * 20, True),
+    "line-gho": ("gho_" + "a" * 20, True),
+    "line-ghu": ("ghu_" + "a" * 20, True),
+    "line-ghs": ("ghs_" + "a" * 20, True),
+    "line-ghr": ("ghr_" + "a" * 20, True),
+    "line-pat": ("github_pat_" + "a" * 20, True),
+    "line-akia": ("AKIA" + "A" * 16, True),
+    "equals-ghp": ("TOKEN=" + "ghp_" + "a" * 20, True),
+    "quote-ant": ('"' + "sk-ant-api03-" + "b" * 20 + '"', True),
+    "space-pat": ("x github_pat_" + "a" * 20, True),
+    "bearer-jwt": ("Bearer " + "eyJ" + "a" * 10 + ".eyJ" + "b" * 10 + "." + "c" * 10, True),
+}
+
+
+@pytest.mark.parametrize("case_id", sorted(_BOUNDARY_LINES))
+def test_known_token_needs_a_left_boundary(tmp_path, case_id):
+    text, blocked = _BOUNDARY_LINES[case_id]
+    target = tmp_path / "input"
+    target.write_text(text + "\n", encoding="utf-8")
+    result = scan(target)
+    assert (result.returncode != 0) is blocked
+    out = result.stdout.decode()
+    err = result.stderr.decode()
+    if text in out or text in err:
+        raise AssertionError("scanner printed a matched value")
+    if blocked:
+        assert "rule=known-token" in err
+        assert "input" in err
+        assert "on line(s): 1" in err
+
+
 def setup_scripts(repo):
     shutil.copytree(ROOT / "scripts", repo / "scripts")
     return repo / "scripts/security/check-push-range.sh"

@@ -134,9 +134,12 @@ def pr_allowed_human_activity_digest(
     return _sha256_hexdigest(payload)
 
 
-# Fixed-prefix token formats. A private-key header matches without its END line;
+# Fixed-prefix token formats. The left boundary matches the shell scanner, so a
+# token cannot continue a word. A private-key header matches without its END line;
 # redaction then removes the rest of the text, so a truncated key body never leaks.
+# The boundary is a lookbehind so replacement keeps the preceding character.
 _SECRET_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:"
     r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"
     r"|AKIA[0-9A-Z]{16}|(?<![A-Za-z0-9])sk-(?![a-z]+(?:-[a-z]+)+(?![A-Za-z0-9_-]))[A-Za-z0-9_-]{20,}"
     r"|xox[abprs]-[A-Za-z0-9-]{10,}"
@@ -146,6 +149,7 @@ _SECRET_PATTERN = re.compile(
     r"|(?<![A-Za-z0-9_])hf_[A-Za-z0-9]{30,}"
     r"|https://hooks\.slack\.com/services/T[A-Za-z0-9_]+/B[A-Za-z0-9_]+/[A-Za-z0-9_]+"
     r"|-----BEGIN [A-Z ]*PRIVATE KEY-----(?:[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----|[\s\S]*)"
+    r")"
 )
 
 

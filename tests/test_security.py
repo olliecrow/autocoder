@@ -372,6 +372,47 @@ def test_lowercase_hyphenated_sk_identifier_is_not_a_token():
     assert contains_likely_secret("sk-ant-api03-" + "aA1" * 8)
 
 
+def test_token_shapes_need_a_left_boundary():
+    from autocoder.security import contains_likely_secret, redact_secrets
+
+    def ordinary_text(text):
+        if contains_likely_secret(text) or redact_secrets(text) != text:
+            raise AssertionError("ordinary text was treated as a token")
+
+    def blocked_text(text):
+        if not contains_likely_secret(text):
+            raise AssertionError("token shape was not detected")
+        redacted = redact_secrets("prefix " + text + " suffix")
+        kept = redacted.startswith("prefix ") and redacted.endswith(" suffix")
+        if not kept or "[redacted]" not in redacted or text in redacted:
+            raise AssertionError("token was not redacted behind its boundary")
+
+    for text in (
+        "task-" + "ab" * 20,
+        "mask-" + "a1b2c3d4" + "e5f6g7h8" + "i9j0k1",
+        "risk-" + "proj-management-dashboard-v2",
+        "x_" + "sk-" + "ab" * 10,
+        "x-" + "sk-proj-" + "A1" * 10,
+        "x" + "ghp_" + "a" * 20,
+        "x" + "github_pat_" + "a" * 20,
+        "x" + "AKIA" + "A" * 16,
+        "x" + "eyJ" + "a" * 10 + ".eyJ" + "b" * 10 + "." + "c" * 10,
+    ):
+        ordinary_text(text)
+    for text in (
+        "sk-" + "ab" * 10,
+        "sk-proj-" + "A1" * 10,
+        "sk-ant-oat01-" + "a" * 20,
+        "sk-ant-api03-" + "b" * 20,
+        "TOKEN=" + "ghp_" + "a" * 20,
+        '"' + "sk-ant-api03-" + "b" * 20 + '"',
+        "Bearer " + "eyJ" + "a" * 10 + ".eyJ" + "b" * 10 + "." + "c" * 10,
+        "x github_pat_" + "a" * 20,
+        "AKIA" + "A" * 16,
+    ):
+        blocked_text(text)
+
+
 def test_redact_managed_env_and_secret_environment(tmp_path, monkeypatch):
     from autocoder.security import redact_for_repo
     value = 'example-' + 'credential-value'
