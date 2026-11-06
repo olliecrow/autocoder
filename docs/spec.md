@@ -430,6 +430,8 @@ secrets are not detected.
 Security CI runs weekly and on pushes/PRs. It checks commit messages, paths, and
 added file lines, including merge changes against the first parent. Binary and
 `-diff` files are scanned as text. Invalid ranges and scan errors fail the check.
+A gitleaks log that reports an error, or zero commits for a non-empty range,
+fails the check. An empty range does not.
 A missing, zero, or unknown push base (and the weekly run) scans all history
 reachable from the tip; the pre-push hook does the same for a new branch.
 The shell text policy matches GitHub token prefixes, Anthropic `sk-ant-oat01-`

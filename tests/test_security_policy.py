@@ -86,12 +86,17 @@ def test_push_range_scans_file_diffs_and_plus_lines(repo):
     assert check_range(repo, script, base, tip).returncode != 0
 
 
-def run_ci_range(repo, tmp_path, *, event, before, tip, scanner=None):
+def run_ci_range(repo, tmp_path, *, event, before, tip, scanner=None, report="INF 1 commits scanned."):
     """Run the CI wrapper with a fake gitleaks that records its arguments, or a real scanner."""
     fakebin = tmp_path / "bin"
     fakebin.mkdir(exist_ok=True)
     fake = fakebin / "gitleaks"
-    fake.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "$SCAN_ARGS"\n{scanner or ""}\n')
+    script = '#!/bin/sh\nprintf "%s\\n" "$@" > "$SCAN_ARGS"\n'
+    if report:
+        script += "cat >&2 <<'EOF'\n" + report + "\nEOF\n"
+    if scanner:
+        script += scanner.rstrip() + "\n"
+    fake.write_text(script)
     fake.chmod(0o700)
     args_file = tmp_path / "args"
     env = {**os.environ, "PATH": str(fakebin) + os.pathsep + os.environ["PATH"],
@@ -178,6 +183,50 @@ def test_ci_gitleaks_scans_binary_and_diff_disabled_files(repo, hide, tmp_path):
                              scanner=f'exec "{scanner}" "$@"')
     assert result.returncode != 0
     assert b"leaks found" in result.stdout + result.stderr
+
+
+def test_ci_rejects_gitleaks_error_log_with_zero_commits(repo, tmp_path):
+    setup_scripts(repo)
+    tip = _git(repo, "rev-parse", "HEAD").strip()
+    result, _args = run_ci_range(
+        repo, tmp_path, event="push", before="0" * 40, tip=tip,
+        report="ERR simulated git scan failure\nINF 0 commits scanned.",
+        scanner="exit 0",
+    )
+    assert result.returncode != 0
+
+
+def test_ci_preserves_gitleaks_nonzero_exit(repo, tmp_path):
+    setup_scripts(repo)
+    tip = _git(repo, "rev-parse", "HEAD").strip()
+    result, _args = run_ci_range(
+        repo, tmp_path, event="push", before="0" * 40, tip=tip, scanner="exit 3",
+    )
+    assert result.returncode == 3
+
+
+def test_ci_accepts_a_completed_nonempty_scan(repo, tmp_path):
+    setup_scripts(repo)
+    (repo / "clean.txt").write_text("ok\n", encoding="utf-8")
+    _git(repo, "add", "clean.txt")
+    _git(repo, "commit", "-qm", "clean")
+    tip = _git(repo, "rev-parse", "HEAD").strip()
+    base = _git(repo, "rev-parse", "HEAD~1").strip()
+    result, _args = run_ci_range(
+        repo, tmp_path, event="push", before=base, tip=tip,
+        report="WRN unknown note\nINF Unknown SCM platform\nINF 2 commits scanned.",
+    )
+    assert result.returncode == 0
+
+
+def test_ci_empty_range_accepts_zero_scanned_commits(repo, tmp_path):
+    setup_scripts(repo)
+    tip = _git(repo, "rev-parse", "HEAD").strip()
+    result, _args = run_ci_range(
+        repo, tmp_path, event="push", before=tip, tip=tip,
+        report="INF 0 commits scanned.",
+    )
+    assert result.returncode == 0
 
 
 def test_gitleaks_path_allowlist_is_per_secret_and_anchored(tmp_path):
